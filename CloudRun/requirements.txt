@@ -1,0 +1,6 @@
+streamlit
+google-genai
+moviepy
+pydub
+demucs
+google-cloud-storage
