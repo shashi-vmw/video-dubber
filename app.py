@@ -13,6 +13,8 @@ import datetime
 from google.cloud import storage
 import pyrubberband as rb
 import soundfile as sf
+import concurrent.futures
+import queue
 
 # --- UI HELPER DATA ---
 
@@ -39,10 +41,55 @@ GCP_REGIONS = [
 ]
 
 # --- VOICE CONFIG (From original script) ---
-MALE_VOICE_LIST = ['Puck', 'Orus', 'Enceladus']
-FEMALE_VOICE_LIST = ['Kore', 'Zephyr', 'Leda', 'Sulafat', 'Aoede']
+MALE_VOICE_LIST = ['Puck', 'Orus', 'Enceladus', 'Charon', 'Fenrir', 'Iapetus', 'Umbriel']
+FEMALE_VOICE_LIST = ['Kore', 'Zephyr', 'Leda', 'Sulafat', 'Aoede', 'Callirrhoe', 'Autonoe']
 CHILD_VOICE_LIST = ['Leda', 'Kore']
 FALLBACK_VOICE = 'Leda'
+
+# --- DEFAULT PROMPT ---
+# This is the default prompt that will be shown in the UI for editing.
+DEFAULT_VIDEO_ANALYSIS_PROMPT = """
+You are an expert voice director and video producer creating a script for dubbing.
+Analyze the provided video file's audio track with extreme detail. Your goal is to capture the complete performance, including the emotional and dramatic context.
+
+Follow these steps precisely:
+1.  **Speaker Diarization**: Use a combination of audio and video to identify every distinct speaker and assign a unique label (e.g., SPEAKER_1).
+2.  **Character Classification**: Classify each speaker as MALE, FEMALE, or CHILD.
+3.  **Emotional Analysis**: For each dialogue segment, identify the primary emotion being conveyed. Choose from this list: **Love & Affection: PASSIONATE, LONGING, ADORING, FLIRTATIOUS, TENDER, SHY
+                  Joy & Happiness: ELATED, AMUSED, CONTENT, RELIEVED, HOPEFUL
+                  Anger & Fury: IRRITATED, FRUSTRATED, RAGING, INDIGNANT, VENGEFUL, CONTEMPTUOUS
+                  Sadness & Grief: SORROWFUL, HEARTBROKEN, DESPAIRING, MELANCHOLIC, SYMPATHETIC
+                  Fear & Anxiety: TERRIFIED, ANXIOUS, NERVOUS, DREADFUL, PANICKED
+                  Surprise & Wonder: SHOCKED, ASTONISHED, AWESTRUCK, DISBELIEF
+                  Complex & Social: GUILTY, ASHAMED, JEALOUS, BETRAYED, DESPERATE, ARROGANT, SUSPICIOUS
+                  Neutral: NEUTRAL**.
+4.  **Delivery Style Analysis**: For each dialogue segment, identify the style of delivery. Choose from this list: **NORMAL, SHOUTING, WHISPERING, PLEADING, CRYING / SOBBING, LAUGHING, MOCKING / SARCASTIC,
+                         MENACING, FRANTIC, HESITANT, FIRM**.
+5.  **Transcription & Translation**: Provide the timestamped original '{INPUT_LANGUAGE}' transcript and its accurate and meaningful '{OUTPUT_LANGUAGE}' translation as used in movies.
+6.  **Pace of Speech**: For each dialogue segment, identify the pace of delivery. Choose from this list: **NORMAL, FAST, VERY FAST, SLOW, MEDIUM, VERY SLOW**.
+7.  **Time Conversion**: Always assign the start and end time in seconds. Do not consider minutes. For example, if a time shows as 1:12, it should be converted to 72 seconds (60+12 seconds) and not 112 seconds.
+8.  **Non-Dialogue Sounds**: Capture any significant non-dialogue vocal sounds like sighs, gasps, laughs, or cries and include them in the transcript.
+9.  **Output Format**: Your final output MUST be a valid JSON array of objects. Do not include any text or explanations outside of this array. Each object represents a single line of dialogue and must have the following structure:
+    {{
+          "start_time": float,
+          "end_time": float,
+          "speaker_label": "string",
+          "character_type": "string (MALE, FEMALE, or CHILD)",
+          "emotion": "string (e.g., Love & Affection: PASSIONATE, LONGING, ADORING, FLIRTATIOUS, TENDER, SHY
+                      Joy & Happiness: ELATED, AMUSED, CONTENT, RELIEVED, HOPEFUL
+                      Anger & Fury: IRRITATED, FRUSTRATED, RAGING, INDIGNANT, VENGEFUL, CONTEMPTUOUS
+                      Sadness & Grief: SORROWFUL, HEARTBROKEN, DESPAIRING, MELANCHOLIC, SYMPATHETIC
+                      Fear & Anxiety: TERRIFIED, ANXIOUS, NERVOUS, DREADFUL, PANICKED
+                      Surprise & Wonder: SHOCKED, ASTONISHED, AWESTRUCK, DISBELIEF
+                      Complex & Social: GUILTY, ASHAMED, JEALOUS, BETRAYED, DESPERATE, ARROGANT, SUSPICIOUS
+                      Neutral: NEUTRAL)",
+          "delivery_style": "string (NORMAL, SHOUTING, WHISPERING, PLEADING, CRYING / SOBBING, LAUGHING, MOCKING / SARCASTIC,
+                             MENACING, FRANTIC, HESITANT, FIRM)",
+          "original_transcript": "string ('{INPUT_LANGUAGE}' text)",
+          "{OUTPUT_LANGUAGE}_translation": "string ('{OUTPUT_LANGUAGE}' text)",
+          "pace": "string (NORMAL, FAST, VERY FAST, SLOW, MEDIUM or VERY SLOW)"
+    }}
+"""
 
 @st.cache_resource
 def get_gcs_client():
@@ -58,50 +105,32 @@ def list_gcs_buckets(client):
         return []
 
 def list_gcs_dirs_files(client, bucket_name, prefix):
-    """
-    A more robust function to list directories and files by processing a flat list of blobs.
-    This method is more reliable than using the 'delimiter' trick.
-    """
+    """A more robust function to list directories and files."""
     dirs = set()
     files = []
     try:
-        # If a prefix is provided, ensure it ends with a slash for matching
         if prefix and not prefix.endswith('/'):
             prefix += '/'
 
-        # Get a flat list of all blobs under the current prefix
         all_blobs = client.list_blobs(bucket_name, prefix=prefix)
-        
         video_extensions = ['.mp4', '.mov', '.avi', '.mkv']
 
         for blob in all_blobs:
-            # We don't want to list the prefix folder itself
             if blob.name == prefix:
                 continue
-
-            # Get the path of the object relative to the current prefix
             relative_path = blob.name[len(prefix):]
-
-            # If there's a slash in the relative path, it's in a subdirectory
             if '/' in relative_path:
-                # We add the first part of the path as a directory
                 top_level_dir = relative_path.split('/')[0]
                 dirs.add(top_level_dir)
-            # Otherwise, it's a file directly in the current path
             else:
                 if any(relative_path.lower().endswith(ext) for ext in video_extensions):
-                    # We store the full path of the blob for later use
                     files.append(blob.name)
         
-        # Reconstruct the full path for the discovered directories
-        # e.g., if prefix is 'videos/' and a dir is 'action', the full path is 'videos/action/'
         full_path_dirs = [f"{prefix}{d}/" for d in sorted(list(dirs))]
-        
         return full_path_dirs, sorted(files)
 
     except Exception as e:
-        st.error(f"❌ Error listing content in gs://{bucket_name}/{prefix or ''}.")
-        st.warning(f"An unexpected error occurred: {e}")
+        st.error(f"❌ Error listing content in gs://{bucket_name}/{prefix or ''}. Error: {e}")
         return [], []
 
 def download_gcs_file(client, bucket_name, source_blob_name, logger):
@@ -109,10 +138,8 @@ def download_gcs_file(client, bucket_name, source_blob_name, logger):
     try:
         bucket = client.bucket(bucket_name)
         blob = bucket.blob(source_blob_name)
-        
-        # Create a temporary file and get its path
         with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(source_blob_name)[1]) as tmpfile:
-            logger.log(f"⬇️ Downloading gs://{bucket_name}/{source_blob_name} to a temporary file...")
+            logger.log(f"⬇️ Downloading gs://{bucket_name}/{source_blob_name}...")
             blob.download_to_filename(tmpfile.name)
             logger.log("✅ Download complete.")
             return tmpfile.name
@@ -126,7 +153,6 @@ def upload_to_gcs(client, bucket_name, source_file_path, destination_blob_name, 
     try:
         bucket = client.bucket(bucket_name)
         blob = bucket.blob(destination_blob_name)
-        
         logger.log(f"⬆️ Uploading final video to gs://{bucket_name}/{destination_blob_name}...")
         blob.upload_from_filename(source_file_path)
         logger.log("✅ Upload complete.")
@@ -141,8 +167,6 @@ def generate_download_signed_url_v4(client, bucket_name, blob_name):
     try:
         bucket = client.bucket(bucket_name)
         blob = bucket.blob(blob_name)
-
-        # This URL is valid for 1 hour
         url = blob.generate_signed_url(
             version="v4",
             expiration=datetime.timedelta(hours=1),
@@ -152,40 +176,34 @@ def generate_download_signed_url_v4(client, bucket_name, blob_name):
     except Exception as e:
         st.error(f"Could not generate download link. Error: {e}")
         return None
-    
-# --- STATUS LOGGER CLASS FOR UI UPDATES ---
+
 class StatusLogger:
-    """A helper class to log status updates to the Streamlit UI."""
-    def __init__(self):
-        self.status_area = st.empty()
-        self.log_messages = []
+    """A thread-safe logger that puts messages onto a queue."""
+    def __init__(self, log_queue: queue.Queue):
+        self.queue = log_queue
+    
+    def log(self, message: str):
+        """Puts a message onto the log queue."""
+        self.queue.put(message)
 
-    def log(self, message, type="info"):
-        # Prepend emoji based on type for better visual cues
-        if "✅" in message or "🎉" in message:
-            type = "success"
-        elif "❌" in message or "⚠️" in message:
-            type = "warning"
+def render_logs(container, current_logs: list):
+    """Renders a list of log messages into a Streamlit container."""
+    with container:
+        st.subheader("⚙️ Processing Status")
+        for msg in reversed(current_logs):
+            timestamp_str, _, message_body = msg.partition(" - ")
+            if "✅" in message_body or "🎉" in message_body:
+                st.success(msg)
+            elif "❌" in message_body or "⚠️" in message_body:
+                st.warning(msg)
+            else:
+                st.info(msg)
 
-        self.log_messages.append(message)
-        
-        # Display messages in styled containers
-        with self.status_area.container():
-            st.subheader("⚙️ Processing Status")
-            for msg in reversed(self.log_messages): # Show newest first
-                if "✅" in msg or "🎉" in msg:
-                    st.success(msg)
-                elif "❌" in msg or "⚠️" in msg:
-                    st.warning(msg)
-                else:
-                    st.info(msg)
-
-# --- CORE LOGIC (Refactored to accept config and logger) ---
+# --- CORE LOGIC ---
 
 def get_dubbing_script_from_video(video_path, config, logger):
     """
-    Uploads a video to the Gemini API, analyzes it to produce a
-    timestamped, translated, and character-identified dubbing script.
+    Uploads a video to the Gemini API and analyzes it using a provided prompt.
     """
     try:
         if config["USE_VERTEX_AI"]:
@@ -193,7 +211,6 @@ def get_dubbing_script_from_video(video_path, config, logger):
             client = genai.Client(project=config["PROJECT_ID"], location=config["LOCATION"])
         else:
             logger.log("Authenticating with Google API Key")
-            #genai.configure(api_key=config["GOOGLE_API_KEY"])
             client = genai.Client(api_key=config["GOOGLE_API_KEY"])
     except Exception as e:
         logger.log(f"❌ Authentication failed: {e}")
@@ -201,9 +218,8 @@ def get_dubbing_script_from_video(video_path, config, logger):
 
     logger.log(f"Uploading video '{os.path.basename(video_path)}' to the Gemini API...")
     video_file = client.files.upload(file=video_path)
-
-    processing_message = "...Video is processing"
-    logger.log(processing_message)
+    
+    logger.log("...Video is processing on the server")
     while video_file.state.name == "PROCESSING":
         time.sleep(10)
         video_file = client.files.get(name=video_file.name)
@@ -214,38 +230,18 @@ def get_dubbing_script_from_video(video_path, config, logger):
 
     logger.log(f"✅ Video uploaded and processed successfully: {video_file.name}")
 
-    prompt = f"""
-    You are an expert voice director and video producer creating a script for dubbing.
-    Analyze the provided video file's audio track with extreme detail. Your goal is to capture the complete performance, including the emotional and dramatic context.
-
-    Follow these steps precisely:
-    1.  **Speaker Diarization**: Use a combination of audio and video to identify every distinct speaker and assign a unique label (e.g., SPEAKER_1).
-    2.  **Character Classification**: Classify each speaker as MALE, FEMALE, or CHILD.
-    3.  **Emotional Analysis**: For each dialogue segment, identify the primary emotion being conveyed. Choose from this list: **HAPPY, SAD, ANGRY, SURPRISED, FEARFUL, NEUTRAL**.
-    4.  **Delivery Style Analysis**: For each dialogue segment, identify the style of delivery. Choose from this list: **NORMAL, SHOUTING, WHISPERING**.
-    5.  **Transcription & Translation**: Provide the timestamped original '{config["INPUT_LANGUAGE"]}' transcript and its accurate and meaningful '{config["OUTPUT_LANGUAGE"]}' translation as used in Hindi movies.
-    6.  **Pace of Speech: For each dialogue segment, identify the pace of delivery. Choose from this list: **NORMAL, FAST, VERY FAST, SLOW, MEDIUM, VERY SLOW**.
-    7.  **Always assign the start and end time in seconds. Do not consider minutes. Eg. If time shows 1.12 then it should be 60+12=72 seconds and not 112 seconds**.
-    8.  **Output Format**: Your final output MUST be a valid JSON array of objects. Do not include any text or explanations outside of this array. Each object represents a single line of dialogue and must have the following structure:
-        {{
-          "start_time": float,
-          "end_time": float,
-          "speaker_label": "string",
-          "character_type": "string (MALE, FEMALE, or CHILD)",
-          "emotion": "string (e.g., ANGRY, HAPPY, NEUTRAL, ANXIOUS)",
-          "delivery_style": "string (NORMAL, SHOUTING, CRYING, SOBBING, PLEADING or WHISPERING)",
-          "original_transcript": "string ('{config["INPUT_LANGUAGE"]}' text)",
-          "{config["OUTPUT_LANGUAGE"]}_translation": "string ({config["OUTPUT_LANGUAGE"]} text)",
-          "pace": "string (NORMAL, FAST, VERY FAST, SLOW, MEDIUM or VERY SLOW)"
-        }}
-    """
-
+    # <<< MODIFIED: Get the prompt from the config and format it >>>
+    raw_prompt = config['VIDEO_ANALYSIS_PROMPT']
+    prompt = raw_prompt.format(
+        INPUT_LANGUAGE=config["INPUT_LANGUAGE"],
+        OUTPUT_LANGUAGE=config["OUTPUT_LANGUAGE"]
+    )
+    
     logger.log(f"🤖 Sending request to {config['MODEL_NAME']} for analysis...")
     response = client.models.generate_content(
         model=config['MODEL_NAME'],
         contents=[video_file, "\n\n", prompt]
     )
-
     client.files.delete(name=video_file.name)
     logger.log(f"Cleaned up uploaded file on server.")
 
@@ -254,8 +250,8 @@ def get_dubbing_script_from_video(video_path, config, logger):
         dubbing_script = json.loads(json_text)
         dubbing_script.sort(key=lambda x: x['start_time'])
         logger.log("✅ Successfully received and parsed the dubbing script from Gemini.")
-        with st.expander("Show Generated Dubbing Script (JSON)"):
-            st.json(dubbing_script)
+        #with st.expander("Show Generated Dubbing Script (JSON)"):
+        #    st.json(dubbing_script)
         return dubbing_script
     except (json.JSONDecodeError, IndexError, AttributeError) as e:
         logger.log(f"❌ Failed to parse JSON from Gemini's response: {e}")
@@ -274,27 +270,20 @@ def extract_audio(video_path, audio_path, logger):
         return None
 
 def separate_background_music(audio_path, output_dir, logger):
-    logger.log("🎶 Separating background music with Demucs... (This might take a while)")
+    logger.log("🎶 Separating background music with Demucs...")
     try:
-        command = [
-            "python3", "-m", "demucs.separate", "-n", "htdemucs",
-            "-o", str(output_dir), "--two-stems", "vocals", str(audio_path)
-        ]
-        # Use st.spinner for long-running processes
-        with st.spinner('Demucs is separating audio tracks... Please wait.'):
-            result = subprocess.run(command, check=True, capture_output=True, text=True)
+        command = ["python3", "-m", "demucs.separate", "-n", "htdemucs", "-o", str(output_dir), "--two-stems", "vocals", str(audio_path)]
+        #with st.spinner('Demucs is separating audio tracks... This may take some time.'):
+        subprocess.run(command, check=True, capture_output=True, text=True)
         
         audio_filename = os.path.splitext(os.path.basename(audio_path))[0]
-        model_name = "htdemucs"
-        background_path = os.path.join(output_dir, model_name, audio_filename, "no_vocals.wav")
+        background_path = os.path.join(output_dir, "htdemucs", audio_filename, "no_vocals.wav")
 
         if os.path.exists(background_path):
             logger.log("✅ Background music separated successfully.")
             return background_path
         else:
             logger.log("❌ Demucs did not produce the background music file.")
-            if result.stderr:
-                logger.log(f"Demucs Error: {result.stderr}")
             return None
     except Exception as e:
         logger.log(f"❌ An error occurred during audio separation: {e}")
@@ -309,81 +298,58 @@ def wave_file(filename, pcm, channels=1, rate=24000, sample_width=2):
 
 def synthesize_speech_with_gemini(text, segment_details, config, logger):
     logger.log(f"   Synthesizing: '{text[:40]}...' for {segment_details['speaker_label']}")
-    
     try:
         if config["USE_VERTEX_AI"]:
             client = genai.Client(project=config["PROJECT_ID"], location=config["LOCATION"])
         else:
-            #genai.configure(api_key=config["GOOGLE_API_KEY"])
             client = genai.Client(api_key=config["GOOGLE_API_KEY"])
     except Exception as e:
         logger.log(f"❌ TTS Authentication failed: {e}")
-        return None
-
-    voice_description = f"a standard '{config['OUTPUT_LANGUAGE']}' voice"
-    if segment_details['character_type'] == "MALE":
-        voice_description = f"a standard '{config['OUTPUT_LANGUAGE']}' MALE voice"
-    elif segment_details['character_type'] == "FEMALE":
-        voice_description = f"a standard '{config['OUTPUT_LANGUAGE']}' FEMALE voice"
-    elif segment_details['character_type'] == "CHILD":
-        voice_description = f"a higher-pitched '{config['OUTPUT_LANGUAGE']}' child's voice"
-
-    style_description = ""
-    if segment_details['delivery_style'] == "SHOUTING":
-        style_description = " in a loud, shouting tone"
-    elif segment_details['delivery_style'] == "WHISPERING":
-        style_description = " in a soft, whispering tone"
-    elif segment_details['delivery_style'] == "NORMAL":
-        style_description = "in a normal tone"
-    elif segment_details['emotion'] not in ["NEUTRAL", "NORMAL"]:
-        style_description = f" in a {segment_details['emotion'].lower()} tone"
-
-    instruction = f"You are a movie dubbing expert and need to deliver audio as professional editor. Maintain the duration of the output audio within {segment_details['clip_duration']} milliseconds."
-    #instruction = f"You are a movie dubbing expert. Maintain the duration of the output audio within {segment_details['clip_duration']} milliseconds."
-    #full_prompt = f"{instruction}. Using {voice_description} {style_description} with {segment_details['emotion']} emotion, {segment_details['speaker_label']} says the following at {pace} speed: {text}"
-
-    full_prompt = f"{instruction}. Using {voice_description} {style_description} with {segment_details['emotion']} emotion, {segment_details['speaker_label']} says the following at {segment_details['pace']} speed: {text}"
+        return None, ""
+    
+    # Construct TTS prompt
+    voice_description = f"a standard '{config['OUTPUT_LANGUAGE']}' {segment_details['character_type'].lower()} voice"
+    style_description = f" in a {segment_details['emotion'].lower()}, {segment_details['delivery_style'].lower()} tone"
+    instruction = f"You are a movie dubbing expert. Maintain the duration of the output audio within {segment_details['clip_duration']} milliseconds."
+    full_prompt = f"{instruction}. Using {voice_description}{style_description}, {segment_details['speaker_label']} says the following at {segment_details['pace']} speed: {text}"
 
     try:
-        #model_to_use = client.models.get_model(config['TTS_MODEL'])
         response = client.models.generate_content(
-        model=config['TTS_MODEL'],
-        contents=full_prompt,
-        config=types.GenerateContentConfig(
-        response_modalities=["AUDIO"],
-        speech_config=types.SpeechConfig(
-         voice_config=types.VoiceConfig(
-            prebuilt_voice_config=types.PrebuiltVoiceConfig(
-               voice_name=segment_details['selected_voice'],
-               )
+            model=config['TTS_MODEL'],
+            contents=full_prompt,
+            config=types.GenerateContentConfig(
+                response_modalities=["AUDIO"],
+                speech_config=types.SpeechConfig(
+                    voice_config=types.VoiceConfig(
+                        prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                           voice_name=segment_details['selected_voice'],
+                        )
+                    )
+                ),
             )
-        ),
-        ))
+        )
 
         if not response.candidates or not response.candidates[0].content or not response.candidates[0].content.parts:
-            logger.log(f"❌ Gemini returned an empty or invalid response for the text. Skipping.")
-            return None
+            logger.log(f"❌ Gemini returned an empty response for the text. Skipping.")
+            return None, full_prompt
 
         audio_data = response.candidates[0].content.parts[0].inline_data.data
         if not audio_data:
             logger.log(f"❌ Gemini did not return audio data for the text.")
-            return None
+            return None, full_prompt
 
         wave_file(segment_details['output_path'], audio_data)
-        return segment_details['output_path']
+        return segment_details['output_path'], full_prompt
     except Exception as e:
         logger.log(f"❌ Error synthesizing speech with Gemini: {e}")
-        return None
+        return None, full_prompt
 
 def merge_audio_with_video(video_path, audio_path, output_path, logger):
     logger.log(f"🎬 Merging final audio with video...")
     try:
         with VideoFileClip(video_path) as video_clip, AudioFileClip(audio_path) as audio_clip:
-            video_clip = VideoFileClip(video_path)
-            audio_clip = AudioFileClip(audio_path)
             video_clip.audio = audio_clip
-            final_clip = video_clip
-            final_clip.write_videofile(output_path, codec="libx264", audio_codec="aac", logger=None)
+            video_clip.write_videofile(output_path, codec="libx264", audio_codec="aac", logger=None)
         logger.log(f"🎉 Final video saved successfully to '{os.path.basename(output_path)}'")
         return output_path
     except Exception as e:
@@ -391,39 +357,22 @@ def merge_audio_with_video(video_path, audio_path, output_path, logger):
         return None
 
 def assign_specific_voices(transcript_data):
-    speaker_info = {}
-    for item in transcript_data:
-        speaker_label = item['speaker_label']
-        if speaker_label not in speaker_info:
-            speaker_info[speaker_label] = item['character_type']
-
+    speaker_info = {item['speaker_label']: item['character_type'] for item in transcript_data if item['speaker_label'] not in {}}
     voice_indices = {'MALE': 0, 'FEMALE': 0, 'CHILD': 0}
     speaker_voice_array = []
-    sorted_speakers = sorted(speaker_info.keys())
-
-    for speaker in sorted_speakers:
+    for speaker in sorted(speaker_info.keys()):
         char_type = speaker_info[speaker]
-        selected_voice = ""
-        if char_type == 'FEMALE' and FEMALE_VOICE_LIST:
-            index = voice_indices['FEMALE'] % len(FEMALE_VOICE_LIST)
-            selected_voice = FEMALE_VOICE_LIST[index]
-            voice_indices['FEMALE'] += 1
-        elif char_type == 'MALE' and MALE_VOICE_LIST:
-            index = voice_indices['MALE'] % len(MALE_VOICE_LIST)
-            selected_voice = MALE_VOICE_LIST[index]
-            voice_indices['MALE'] += 1
-        elif char_type == 'CHILD' and CHILD_VOICE_LIST:
-            index = voice_indices['CHILD'] % len(CHILD_VOICE_LIST)
-            selected_voice = CHILD_VOICE_LIST[index]
-            voice_indices['CHILD'] += 1
+        voice_list = globals().get(f"{char_type}_VOICE_LIST", [])
+        if voice_list:
+            index = voice_indices[char_type] % len(voice_list)
+            selected_voice = voice_list[index]
+            voice_indices[char_type] += 1
         else:
             selected_voice = FALLBACK_VOICE
-        speaker_voice_array.append({
-            "speaker_label": speaker, "character_type": char_type, "selected_voice": selected_voice
-        })
+        speaker_voice_array.append({"speaker_label": speaker, "character_type": char_type, "selected_voice": selected_voice})
     return speaker_voice_array
 
-def process_video_dubbing(video_path, config, logger):
+def process_video_dubbing(video_path, config, logger, log_container, synthesis_log_area):
     """Main function to orchestrate the entire dubbing process."""
     base_name = os.path.splitext(os.path.basename(video_path))[0]
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -432,17 +381,50 @@ def process_video_dubbing(video_path, config, logger):
         
         original_audio_path = os.path.join(output_dir, f"{base_name}_original_audio.wav")
         extract_audio(video_path, original_audio_path, logger)
+        # --- MODIFIED: Run Demucs and Gemini analysis in parallel ---
+        background_track_path = None
+        dubbing_script = None
+
+                # --- NEW: Polling loop for live logging ---
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            logger.log("🚀 Starting parallel processing for audio separation and video analysis...")
+            render_logs(log_container, st.session_state.log_messages)
+            demucs_output_dir = os.path.join(output_dir, "separated")
+            future_audio = executor.submit(separate_background_music, original_audio_path, demucs_output_dir, logger)
+            future_script = executor.submit(get_dubbing_script_from_video, video_path, config, logger)
+            
+            futures = [future_audio, future_script]
+            while any(not f.done() for f in futures):
+                while not logger.queue.empty():
+                    message = logger.queue.get_nowait()
+                    timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%H:%M:%S")
+                    st.session_state.log_messages.append(f"{timestamp} UTC - {message}")
+                render_logs(log_container, st.session_state.log_messages)
+                time.sleep(0.5)
+            
+            dubbing_script = future_script.result()
+            background_track_path = future_audio.result()
+
+        # Final log render to catch any remaining messages
+        while not logger.queue.empty():
+            message = logger.queue.get_nowait()
+            timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%H:%M:%S")
+            st.session_state.log_messages.append(f"{timestamp} UTC - {message}")
+        render_logs(log_container, st.session_state.log_messages)
+        # --- END NEW ---
+
+        logger.log("✅ Parallel processing finished.")
         
-        background_track_path = separate_background_music(original_audio_path, os.path.join(output_dir, "separated"), logger)
-        
-        dubbing_script = get_dubbing_script_from_video(video_path, config, logger)
         if not dubbing_script:
             logger.log("❌ Aborting due to failure in script generation.")
             return None
+ 
+        # >>>>> CHANGE: ADDED st.expander HERE IN THE MAIN THREAD <<<<<
+        with st.expander("Show Generated Dubbing Script (JSON)", expanded=True):
+            st.json(dubbing_script)
 
         logger.log(f"🔊 Initializing {config['TTS_MODEL']} for Text-to-Speech...")
-        logger.log("🎤 Starting speech synthesis with Gemini...")
-
+        
         with VideoFileClip(video_path) as clip:
             video_duration_ms = int(clip.duration * 1000)
 
@@ -459,7 +441,6 @@ def process_video_dubbing(video_path, config, logger):
         logger.log("Assigned voices to speakers.")
 
         output_lang_key = f"{config['OUTPUT_LANGUAGE']}_translation"
-        total_segments = len(dubbing_script)
         progress_bar = st.progress(0, text="Synthesizing audio segments...")
 
         for i, segment in enumerate(dubbing_script):
@@ -470,20 +451,25 @@ def process_video_dubbing(video_path, config, logger):
             selected_voice = next((item['selected_voice'] for item in speaker_assignments if item['speaker_label'] == segment['speaker_label']), FALLBACK_VOICE)
             
             segment_details = {
-                'character_type': segment['character_type'],
-                'emotion': segment.get('emotion', 'NEUTRAL'),
-                'delivery_style': segment.get('delivery_style', 'NORMAL'),
-                'speaker_label': segment.get('speaker_label', 'DEFAULT'),
-                'pace': segment.get('pace', 'NORMAL'),
-                'clip_duration': end_time_ms - start_time_ms,
-                'selected_voice': selected_voice,
-                'output_path': os.path.join(output_dir, f"segment_{i}.wav")
+                'character_type': segment['character_type'], 'emotion': segment.get('emotion', 'NEUTRAL'),
+                'delivery_style': segment.get('delivery_style', 'NORMAL'), 'speaker_label': segment.get('speaker_label', 'DEFAULT'),
+                'pace': segment.get('pace', 'NORMAL'), 'clip_duration': end_time_ms - start_time_ms,
+                'selected_voice': selected_voice, 'output_path': os.path.join(output_dir, f"segment_{i}.wav")
             }
             
-            time.sleep(2) 
+            time.sleep(2)
+            synthesized_path, tts_prompt = synthesize_speech_with_gemini(output_text, segment_details, config, logger)
             
-            synthesized_path = synthesize_speech_with_gemini(output_text, segment_details, config, logger)
-            
+            with synthesis_log_area.expander(f"Segment {i+1}: Speaker - {segment.get('speaker_label', 'N/A')} ({segment['start_time']:.2f}s - {segment['end_time']:.2f}s)"):
+                st.markdown(f"**🗣️ Translated Text:** `{output_text}`")
+                st.markdown(f"**🤖 TTS Prompt:** `{tts_prompt}`")
+                if synthesized_path and os.path.exists(synthesized_path):
+                    st.markdown("**🔊 Generated Audio:**")
+                    with open(synthesized_path, "rb") as audio_file:
+                        st.audio(audio_file.read(), format="audio/wav")
+                else:
+                    st.warning("Audio synthesis failed for this segment.")
+
             if synthesized_path and os.path.exists(synthesized_path):
                 with open(synthesized_path, "rb") as f:
                     dub_segment = AudioSegment.from_wav(f)
@@ -495,7 +481,7 @@ def process_video_dubbing(video_path, config, logger):
                       if target_duration_ms > 0 and original_duration_ms > 0:
                         speed_ratio = original_duration_ms / target_duration_ms
                         if speed_ratio > 1.5:
-                            speed_ratio = 1.3
+                            speed_ratio = 1.27
                         
                         # Only adjust if the speed difference is significant (e.g., > 5%)
                         if abs(1 - speed_ratio) > 0.05:
@@ -510,67 +496,43 @@ def process_video_dubbing(video_path, config, logger):
 
                             # Load the new, time-adjusted audio segment
                             dub_segment = AudioSegment.from_wav(stretched_audio_path)
-                            os.remove(stretched_audio_path) # Clean up intermediate file
-                
+                            #os.remove(stretched_audio_path) # Clean up intermediate file
                     except Exception as e:
-                      logger.log(f"   ⚠️ Could not time-stretch segment {i}, using original audio. Error: {e}")
-                # --- END OF NEW LOGIC ---
-
+                      logger.log(f"   ⚠️ Could not time-stretch segment {i}: {e}")
+                
                 final_vocal_track = final_vocal_track.overlay(dub_segment, position=start_time_ms)
                 os.remove(synthesized_path)
             else:
-                logger.log(f"⚠️ WARNING: Segment {i} could not be synthesized and will be silent.")
+                logger.log(f"⚠️ Segment {i} could not be synthesized and will be silent.")
             
-            progress_bar.progress((i + 1) / total_segments, text=f"Synthesizing audio segment {i+1}/{total_segments}")
-            
+            progress_bar.progress((i + 1) / len(dubbing_script), text=f"Synthesizing audio segment {i+1}/{len(dubbing_script)}")
+        
         logger.log("🎤 Speech synthesis complete. Combining audio tracks...")
         final_audio_track = background_music.overlay(final_vocal_track)
         final_audio_path = os.path.join(output_dir, f"{base_name}_dubbed_audio.wav")
         final_audio_track.export(final_audio_path, format="wav")
         logger.log("✅ Final audio track created.")
 
-        # <<< --- MODIFIED LOGIC --- >>>
         final_video_path = os.path.join(output_dir, f"dubbed_{base_name}.mp4")
         merged_video_path = merge_audio_with_video(video_path, final_audio_path, final_video_path, logger)
         
-        # Upload the final video to GCS
         if merged_video_path and os.path.exists(merged_video_path):
             gcs_client = get_gcs_client()
             destination_blob_name = f"dubbed_videos/{os.path.basename(merged_video_path)}"
-            
-            upload_successful = upload_to_gcs(
-                gcs_client, 
-                config['BUCKET_NAME'], 
-                merged_video_path, 
-                destination_blob_name, 
-                logger
-            )
-            
-            if upload_successful:
-                # Return the GCS path of the uploaded file
-                return destination_blob_name 
+            if upload_to_gcs(gcs_client, config['BUCKET_NAME'], merged_video_path, destination_blob_name, logger):
+                return destination_blob_name
         
-        return None # Return None if anything failed
+        return None
 
 def handle_navigation():
     """Callback to update path based on folder navigation."""
     nav_choice = st.session_state.get("gcs_nav_choice")
-    if not nav_choice:
-        return
-
-    # Update the current path based on the selection
+    if not nav_choice: return
     if nav_choice == "⬆️ Go Up (..)":
-        # Move up one level
         path_parts = st.session_state.current_path.strip('/').split('/')
-        st.session_state.current_path = '/'.join(path_parts[:-1])
-        # Ensure path ends with a slash if it's not the root
-        if st.session_state.current_path:
-            st.session_state.current_path += '/'
+        st.session_state.current_path = '/'.join(path_parts[:-1]) + '/' if len(path_parts) > 1 else ""
     else:
-        # Navigate into the selected folder (the choice is the full path)
         st.session_state.current_path = nav_choice
-    
-    # Reset the file selection and the navigation choice widget
     st.session_state.gcs_file_path = None
     st.session_state.gcs_file_choice = None
     st.session_state.gcs_nav_choice = None
@@ -579,23 +541,22 @@ def handle_navigation():
 def main():
     st.set_page_config(layout="wide", page_title="Gemini Video Dubber")
     st.title("🎬 Gemini Video Dubbing Studio")
-    st.markdown("Select a video from Google Cloud Storage, choose your languages, and let Gemini automatically dub it for you.")
+    st.markdown("Select a video from GCS, configure the settings, and let Gemini automatically dub it for you.")
+
+# >>>>> CHANGE: INITIALIZE SESSION STATE AT THE TOP OF THE SCRIPT RUN <<<<<
+    if 'log_messages' not in st.session_state:
+        st.session_state.log_messages = []
 
     gcs_client = get_gcs_client()
 
-    # --- State Initialization ---
-    if 'current_path' not in st.session_state:
-        st.session_state.current_path = ""
-    if 'selected_bucket' not in st.session_state:
-        st.session_state.selected_bucket = None
-    if 'gcs_file_path' not in st.session_state:
-        st.session_state.gcs_file_path = None
-    if 'gcs_nav_choice' not in st.session_state:
-        st.session_state.gcs_nav_choice = None
-    if 'gcs_file_choice' not in st.session_state:
-        st.session_state.gcs_file_choice = None
+    # Initialize session state
+    for key, default_val in [('current_path', ""), ('selected_bucket', None), 
+                             ('gcs_file_path', None), ('gcs_nav_choice', None), 
+                             ('gcs_file_choice', None)]:
+        if key not in st.session_state:
+            st.session_state[key] = default_val
 
-    def reset_path_on_bucket_change():
+    def reset_on_bucket_change():
         st.session_state.current_path = ""
         st.session_state.gcs_file_path = None
         st.session_state.gcs_nav_choice = None 
@@ -610,69 +571,28 @@ def main():
         st.subheader("📁 Select Video from GCS")
 
         buckets = list_gcs_buckets(gcs_client)
-        st.selectbox("1. Select GCS Bucket", options=[""] + buckets, key="selected_bucket", on_change=reset_path_on_bucket_change)
+        st.selectbox("1. Select GCS Bucket", options=[""] + buckets, key="selected_bucket", on_change=reset_on_bucket_change)
 
         if st.session_state.selected_bucket:
-            st.markdown("---") # Visual separator
+            st.markdown("---")
+            st.text_input("📍 Current Location:", value=st.session_state.current_path or "Bucket Root", disabled=True)
 
-            # --- NEW: Display the current location ---
-            if st.session_state.current_path:
-                current_folder_display = st.session_state.current_path.strip('/').split('/')[-1]
-            else:
-                current_folder_display = "Bucket Root"
-            
-            st.text_input(
-                "📍 You are here:", 
-                value=current_folder_display, 
-                disabled=True
-            )
-
-            # --- Navigation and File Selection ---
             dirs, files = list_gcs_dirs_files(gcs_client, st.session_state.selected_bucket, st.session_state.current_path)
+            nav_options = ["⬆️ Go Up (..)"] + dirs if st.session_state.current_path else dirs
+            st.selectbox("2. Navigate Folders:", options=nav_options, key="gcs_nav_choice", on_change=handle_navigation,
+                         format_func=lambda p: "⬆️ Go Up (..)" if ".." in p else f"📁 {p.rstrip('/').split('/')[-1]}", placeholder="Select a folder to enter...")
+            st.selectbox("3. Select Video File:", options=[""] + files, key="gcs_file_choice", on_change=handle_file_selection,
+                         format_func=lambda p: p.split('/')[-1] if p else "", placeholder="Select a video file...")
+            st.markdown("---")
 
-            nav_options = []
-            if st.session_state.current_path:
-                nav_options.append("⬆️ Go Up (..)")
-            nav_options.extend(dirs)
-
-            def format_folder_name(path):
-                if path == "⬆️ Go Up (..)": return path
-                if not path: return ""
-                return f"📁 {path.rstrip('/').split('/')[-1]}"
-
-            st.selectbox(
-                "2. Navigate to subfolder:",
-                options=nav_options,
-                key="gcs_nav_choice",
-                on_change=handle_navigation,
-                format_func=format_folder_name,
-                placeholder="Select a destination..."
-            )
-            
-            def format_file_name(path):
-                if not path: return ""
-                return path.split('/')[-1]
-
-            st.selectbox(
-                "3. Select a file:",
-                options=files,
-                key="gcs_file_choice",
-                on_change=handle_file_selection,
-                format_func=format_file_name,
-                placeholder="Select a video file..."
-            )
-            st.markdown("---") # Visual separator
-
-        # --- The rest of the form ---
         with st.form("config_form"):
             st.subheader("🔑 API & Model Settings")
             google_api_key = st.text_input("Google API Key", type="password", help="Required if not using Vertex AI.")
             use_vertex_ai = st.checkbox("Use Vertex AI", value=False)
-            
             project_id, location = None, None
             if use_vertex_ai:
                 project_id = st.text_input("Google Cloud Project ID", help="Required for Vertex AI.")
-                location = st.selectbox("GCP Location", options=GCP_REGIONS, index=0, help="The region for your Vertex AI resources.")
+                location = st.selectbox("GCP Location", options=GCP_REGIONS, index=0)
 
             st.subheader("⚙️ Dubbing Settings")
             col1, col2 = st.columns(2)
@@ -684,34 +604,59 @@ def main():
             llm_model_name = st.selectbox("LLM Model Name", options=["gemini-2.5-pro", "gemini-2.5-flash"], index=0)
             tts_model_name = st.selectbox("TTS Model Name", options=["gemini-2.5-pro-preview-tts", "gemini-2.5-flash-preview-tts"], index=0)
             
+            # <<< MODIFIED: Added editable prompt text area >>>
+            st.subheader("🤖 Video Analysis Prompt")
+            with st.expander("Edit the prompt for video analysis"):
+                video_prompt_text = st.text_area(
+                    "Prompt:", 
+                    value=DEFAULT_VIDEO_ANALYSIS_PROMPT, 
+                    height=400,
+                    key="editable_video_prompt"
+                )
+
             submitted = st.form_submit_button("🚀 Start Dubbing Process")
 
-    # --- Main Page Logic (no changes here) ---
+    # --- Main Page Logic ---
     if submitted:
-        # (The rest of your processing logic remains unchanged)
-        gcs_file_path = st.session_state.gcs_file_path
-        selected_bucket = st.session_state.selected_bucket
-
         if not use_vertex_ai and not google_api_key:
             st.error("Please provide a Google API Key or select 'Use Vertex AI'.")
         elif use_vertex_ai and (not project_id or not location):
             st.error("Please provide a Project ID and Location for Vertex AI.")
-        elif not gcs_file_path or not selected_bucket:
-            st.error("Please select a bucket and a video file from Google Cloud Storage.")
+        elif not st.session_state.gcs_file_path or not st.session_state.selected_bucket:
+            st.error("Please select a bucket and a video file from GCS.")
         else:
-            logger = StatusLogger()
-            local_video_path = download_gcs_file(gcs_client, selected_bucket, gcs_file_path, logger)
+            # Create placeholders for dynamic content
+            log_container = st.empty()
+            main_content_area = st.container()
+            
+            with main_content_area:
+                st.subheader("🔬 Detailed Synthesis Log")
+                synthesis_log_area = st.container(height=600, border=True)
+            
+# --- CHANGE: Use the queue-based logger ---
+            st.session_state.log_messages = []
+            log_queue = queue.Queue()
+            logger = StatusLogger(log_queue)
+
+            render_logs(log_container, st.session_state.log_messages)
+
+            logger.log("🚀 Initializing process...")
+
+            local_video_path = download_gcs_file(gcs_client, st.session_state.selected_bucket, st.session_state.gcs_file_path, logger)
+            
             if local_video_path:
                 config = {
                     "GOOGLE_API_KEY": google_api_key, "USE_VERTEX_AI": use_vertex_ai,
                     "PROJECT_ID": project_id, "LOCATION": location, "INPUT_LANGUAGE": input_lang,
                     "OUTPUT_LANGUAGE": output_lang, "MODEL_NAME": f"models/{llm_model_name}",
-                    "TTS_MODEL": tts_model_name, "BUCKET_NAME": selected_bucket,
+                    "TTS_MODEL": tts_model_name, "BUCKET_NAME": st.session_state.selected_bucket,
+                    "VIDEO_ANALYSIS_PROMPT": video_prompt_text # <<< MODIFIED: Pass edited prompt
                 }
-                st.info(f"Starting dubbing process for **gs://{selected_bucket}/{gcs_file_path}**...")
+                
+                st.info(f"Starting dubbing process for **gs://{config['BUCKET_NAME']}/{st.session_state.gcs_file_path}**...")
                 final_gcs_path = None
                 try:
-                    final_gcs_path = process_video_dubbing(local_video_path, config, logger)
+                    final_gcs_path = process_video_dubbing(local_video_path, config, logger, log_container, synthesis_log_area)
                 except Exception as e:
                     logger.log(f"❌ An unexpected error occurred in the main process: {e}")
                     st.exception(e)
@@ -722,12 +667,18 @@ def main():
                 if final_gcs_path:
                     st.balloons()
                     st.header("🎉 Dubbing Complete!")
-                    authenticated_url = f"https://storage.cloud.google.com/{selected_bucket}/{final_gcs_path}"
-                    st.success("Your dubbed video has been saved to GCS!")
-                    st.markdown(f"You can access it here: **[GCS Authenticated Link]({authenticated_url})**")
-                    st.info("Note: You must be logged into a Google account with permission to view this bucket to access the link.")
+                    st.subheader("▶️ Play Your Dubbed Video")
+                    signed_url = generate_download_signed_url_v4(gcs_client, config['BUCKET_NAME'], final_gcs_path)
+                    if signed_url:
+                        st.video(signed_url)
+                    else:
+                        st.warning("Could not generate a playable link for the video.")
+
+                    authenticated_url = f"https://storage.cloud.google.com/{config['BUCKET_NAME']}/{final_gcs_path}"
+                    st.success(f"Video saved to: [gs://{config['BUCKET_NAME']}/{final_gcs_path}]({authenticated_url})")
                 else:
-                    st.error("Processing failed. No output video was generated. Please check the logs above for details.")
+                    st.error("Processing failed. Please check the logs for details.")
 
 if __name__ == "__main__":
+
     main()
