@@ -1,0 +1,7 @@
+working-dir/
+output-videos/
+source-videos/
+.env
+.venv
+.claude
+.DS_Store
