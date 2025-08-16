@@ -62,11 +62,16 @@ def main(input_video, output_video, output_language, gemini_api_key, use_vertex_
     processor = VideoProcessor(working_dir)
     
     logger("🚀 Starting video dubbing process...")
-    result = processor.process_video_dubbing(input_video, output_video, config, logger)
     
-    if result:
-        logger("✅ Video dubbing process completed successfully!")
-    else:
+    try:
+        result = processor.process_video_dubbing(input_video, output_video, config, logger)
+        
+        if result:
+            logger("✅ Video dubbing process completed successfully!")
+        else:
+            logger("❌ Video dubbing process failed!")
+            exit(1)
+    except Exception as e:
         logger("❌ Video dubbing process failed!")
         exit(1)
 

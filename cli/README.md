@@ -23,6 +23,11 @@ pip install -r requirements.txt
 
 2. Ensure you have `ffmpeg` installed on your system for audio/video processing.
 
+3. For development and testing, install test dependencies:
+```bash
+pip install -r requirements-test.txt
+```
+
 ## Usage
 
 ### Basic Usage
@@ -174,3 +179,60 @@ working-dir/
 ## Supported Languages
 
 The tool supports all languages available in Google's Gemini TTS model. Check the Gemini documentation for the most up-to-date list of supported languages.
+
+## Testing
+
+The CLI includes a comprehensive test suite that covers all critical functionality with mocked dependencies.
+
+### Running Tests
+
+Use the test runner script for convenient test execution:
+
+```bash
+# Install test dependencies
+python run_tests.py install
+
+# Run all tests
+python run_tests.py all
+
+# Run specific test categories
+python run_tests.py unit           # Unit tests only
+python run_tests.py integration    # Integration tests only
+python run_tests.py validation     # CLI validation tests
+python run_tests.py config         # Configuration tests
+python run_tests.py main           # Main CLI function tests
+
+# Run tests with coverage report
+python run_tests.py coverage
+```
+
+### Test Structure
+
+- **Unit Tests**: Test individual components and validation logic
+- **Integration Tests**: Test complete CLI workflows with mocked VideoProcessor
+- **Validation Tests**: Test CLI argument parsing and validation
+- **Configuration Tests**: Test configuration object creation
+
+### What's Tested
+
+- ✅ All CLI argument combinations and validation
+- ✅ Authentication methods (API key, Vertex AI, environment variables)
+- ✅ Conflicting flag detection
+- ✅ Configuration object creation and defaults
+- ✅ Full dubbing workflow with mocked dependencies
+- ✅ Error handling and exit codes
+- ✅ Extraction-only mode
+- ✅ Reuse mode functionality
+- ✅ Compression profile validation
+- ✅ Multiple language combinations
+
+### Mocked Dependencies
+
+Tests use mocks for:
+- VideoProcessor and all its methods
+- File system operations
+- Environment variables
+- Google API calls
+- FFmpeg operations
+
+This ensures tests run quickly and reliably without requiring actual video files or API credentials.
