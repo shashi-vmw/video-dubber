@@ -53,6 +53,65 @@ To continue from a previous run's working directory:
 python cli.py --input-video input.mp4 --output-video output.mp4 --output-language Spanish --reuse working-dir/previous-run
 ```
 
+## Detailed Examples
+
+### Example 1: Telugu to Hindi Dubbing with Compression
+```bash
+python cli.py \
+--GEMINI_API_KEY YOUR_API_KEY_1 \
+--PROJECT_ID your-project-1 \
+--input-video ../source-videos/input-video.mov \
+--output-video ../output-videos/output-video.mov \
+--input-language Telugu \
+--output-language Hindi \
+--llm-model gemini-2.5-pro \
+--tts-model gemini-2.5-pro-preview-tts \
+--compress
+```
+**Purpose**: Dubs a Telugu video to Hindi with automatic compression. Uses the latest Gemini 2.5 Pro models for both analysis and TTS. The `--compress` flag automatically selects an appropriate compression profile for faster processing.
+
+### Example 2: Telugu to English Dubbing (No Compression)
+```bash
+python cli.py \
+--GEMINI_API_KEY YOUR_API_KEY_2 \
+--PROJECT_ID your-project-2 \
+--input-video ../source-videos/input-video.mov \
+--output-video ../output-videos/output-video.mov \
+--input-language Telugu \
+--output-language English \
+--llm-model gemini-2.5-pro \
+--tts-model gemini-2.5-pro-preview-tts
+```
+**Purpose**: Performs high-quality Telugu to English dubbing without compression, maintaining original video quality. Uses different API credentials to distribute load across multiple projects and avoid TTS service limits.
+
+### Example 3: Reusing Previous Processing
+```bash
+python cli.py \
+--GEMINI_API_KEY YOUR_API_KEY_1 \
+--PROJECT_ID your-project-1 \
+--input-video ../source-videos/input-video.mov \
+--output-video ../output-videos/output-video.mov \
+--input-language Telugu \
+--output-language Hindi \
+--llm-model gemini-2.5-pro \
+--tts-model gemini-2.5-pro-preview-tts \
+--compress \
+--reuse ./working-dir/input-video_20250816_132339
+```
+**Purpose**: Continues dubbing from a previous run's working directory. Skips audio extraction, separation, and script generation steps, directly proceeding to TTS synthesis. Useful for trying different target languages or when previous run was interrupted.
+
+### Example 4: Extraction Only Mode
+```bash
+python cli.py \
+--input-video ../source-videos/input-video.mov \
+--output-video ../output-videos/output-video.mov \
+--compress \
+--extraction-only
+```
+**Purpose**: Performs only the preparation steps - extracts audio, separates vocals from background music using Demucs, and generates the dubbing script. No API keys required. Useful for preprocessing before actual dubbing or for script review/editing.
+
+**Note**: Multiple API keys and project IDs are used across examples to distribute load and avoid hitting rate limits on the preview TTS service.
+
 ## Command Line Options
 
 | Option | Description | Required |
