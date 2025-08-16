@@ -8,7 +8,7 @@ def logger(message):
 
 @click.command()
 @click.option("--input-video", required=True, type=click.Path(exists=True), help="Path to the input video file.")
-@click.option("--output-video", required=True, type=click.Path(), help="Path to the output video file.")
+@click.option("--output-path", required=True, type=click.Path(), help="Relative path to the output directory where dubbed videos will be saved.")
 @click.option("--output-language", help="The language to dub the video into (required unless in extraction-only mode).")
 @click.option("--gemini-api-key", envvar="GEMINI_API_KEY", help="Your Google API key. Can also be set via the GEMINI_API_KEY environment variable.")
 @click.option("--use-vertex-ai", is_flag=True, help="Use Vertex AI for authentication.")
@@ -22,7 +22,7 @@ def logger(message):
 @click.option("--reuse", "reuse_path", type=click.Path(exists=True, file_okay=False, dir_okay=True), help="Path to a previous run's working directory to reuse its artifacts.")
 @click.option("--strict", is_flag=True, help="Fail immediately if any AI generation step (TTS, translation) fails.")
 @click.option("--extraction-only", is_flag=True, help="Run only the extraction steps (audio, music separation, script) and then stop.")
-def main(input_video, output_video, output_language, gemini_api_key, use_vertex_ai, project_id, location, input_language, llm_model, tts_model, compression_profile, working_dir, reuse_path, strict, extraction_only):
+def main(input_video, output_path, output_language, gemini_api_key, use_vertex_ai, project_id, location, input_language, llm_model, tts_model, compression_profile, working_dir, reuse_path, strict, extraction_only):
     """
     A command-line tool to dub videos using the Gemini AI API.
     """
@@ -64,7 +64,7 @@ def main(input_video, output_video, output_language, gemini_api_key, use_vertex_
     logger("🚀 Starting video dubbing process...")
     
     try:
-        result = processor.process_video_dubbing(input_video, output_video, config, logger)
+        result = processor.process_video_dubbing(input_video, output_path, config, logger)
         
         if result:
             logger("✅ Video dubbing process completed successfully!")

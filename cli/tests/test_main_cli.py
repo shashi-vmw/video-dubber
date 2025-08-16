@@ -19,7 +19,7 @@ class TestMainCLIFunction:
             
             result = runner.invoke(main, [
                 '--input-video', temp_video_file,
-                '--output-video', 'output.mp4',
+                '--output-path', 'output',
                 '--output-language', 'Spanish',
                 '--gemini-api-key', 'test-key',
                 '--working-dir', 'custom-work-dir'
@@ -34,7 +34,7 @@ class TestMainCLIFunction:
         
         result = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-video', 'custom-output.mp4',
+            '--output-path', 'custom-output',
             '--output-language', 'German',
             '--gemini-api-key', 'test-key-123'
         ])
@@ -46,10 +46,10 @@ class TestMainCLIFunction:
         
         # Get call arguments
         call_args = mock_video_processor.process_video_dubbing.call_args[0]
-        input_video, output_video, config, logger_func = call_args
+        input_video, output_path, config, logger_func = call_args
         
         assert input_video == temp_video_file
-        assert output_video == 'custom-output.mp4'
+        assert output_path == 'custom-output'
         assert config['OUTPUT_LANGUAGE'] == 'German'
         assert config['GEMINI_API_KEY'] == 'test-key-123'
         assert callable(logger_func)
@@ -60,7 +60,7 @@ class TestMainCLIFunction:
         
         result = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-video', 'output.mp4',
+            '--output-path', 'output',
             '--output-language', 'Spanish',
             '--gemini-api-key', 'test-key'
         ])
@@ -78,7 +78,7 @@ class TestMainCLIFunction:
         
         result = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-video', 'output.mp4',
+            '--output-path', 'output',
             '--output-language', 'Spanish',
             '--gemini-api-key', 'test-key'
         ])
@@ -96,7 +96,7 @@ class TestMainCLIFunction:
         
         result = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-video', 'output.mp4',
+            '--output-path', 'output',
             '--output-language', 'Spanish',
             '--gemini-api-key', 'test-key'
         ])
@@ -121,7 +121,7 @@ class TestMainCLIFunction:
         
         result = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-video', 'output.mp4',
+            '--output-path', 'output',
             '--output-language', 'Spanish',
             '--gemini-api-key', 'test-key'
         ])
@@ -142,7 +142,7 @@ class TestMainCLIFunction:
         
         result = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-video', 'output.mp4',
+            '--output-path', 'output',
             '--extraction-only'
         ])
         
@@ -158,7 +158,7 @@ class TestMainCLIFunction:
         
         result = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-video', 'output.mp4',
+            '--output-path', 'output',
             '--output-language', 'Spanish',
             '--gemini-api-key', 'test-key'
         ])
@@ -171,11 +171,11 @@ class TestMainCLIFunction:
         """Test handling when VideoProcessor returns a truthy string (file path)."""
         runner = CliRunner()
         
-        mock_video_processor.process_video_dubbing.return_value = "/path/to/output.mp4"
+        mock_video_processor.process_video_dubbing.return_value = "/path/to/output"
         
         result = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-video', 'output.mp4',
+            '--output-path', 'output',
             '--output-language', 'Spanish',
             '--gemini-api-key', 'test-key'
         ])
@@ -192,7 +192,7 @@ class TestMainCLIFunction:
         
         result = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-video', 'output.mp4',
+            '--output-path', 'output',
             '--output-language', 'Spanish',
             '--gemini-api-key', 'test-key'
         ])
@@ -210,7 +210,7 @@ class TestMainCLIFunction:
         
         result = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-video', 'output.mp4',
+            '--output-path', 'output',
             '--output-language', 'Spanish',
             '--gemini-api-key', 'test-key'
         ])
@@ -229,7 +229,7 @@ class TestMainCLIFunction:
             
             result = runner.invoke(main, [
                 '--input-video', temp_video_file,
-                '--output-video', 'output.mp4',
+                '--output-path', 'output',
                 '--output-language', 'Spanish',
                 '--gemini-api-key', 'test-key'
             ])
@@ -244,7 +244,7 @@ class TestMainCLIFunction:
         # First call
         result1 = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-video', 'output1.mp4',
+            '--output-path', 'output1.mp4',
             '--output-language', 'Spanish',
             '--gemini-api-key', 'test-key1'
         ])
@@ -255,7 +255,7 @@ class TestMainCLIFunction:
         # Second call
         result2 = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-video', 'output2.mp4',
+            '--output-path', 'output2.mp4',
             '--output-language', 'French',
             '--gemini-api-key', 'test-key2'
         ])

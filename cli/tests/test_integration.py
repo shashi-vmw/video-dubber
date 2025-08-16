@@ -15,7 +15,7 @@ class TestFullDubbingWorkflow:
         
         result = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-video', 'output.mp4',
+            '--output-path', 'output',
             '--output-language', 'Spanish',
             '--gemini-api-key', 'test-api-key-123',
             '--input-language', 'English',
@@ -33,7 +33,7 @@ class TestFullDubbingWorkflow:
         
         video_path, output_path, config, logger_func = call_args[0]
         assert video_path == temp_video_file
-        assert output_path == 'output.mp4'
+        assert output_path == 'output'
         assert config['GEMINI_API_KEY'] == 'test-api-key-123'
         assert config['OUTPUT_LANGUAGE'] == 'Spanish'
         assert config['INPUT_LANGUAGE'] == 'English'
@@ -48,7 +48,7 @@ class TestFullDubbingWorkflow:
         
         result = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-video', 'output.mp4',
+            '--output-path', 'output',
             '--output-language', 'Hindi',
             '--use-vertex-ai',
             '--project-id', 'test-project-123',
@@ -79,7 +79,7 @@ class TestFullDubbingWorkflow:
         
         result = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-video', 'output.mp4',
+            '--output-path', 'output',
             '--extraction-only',
             '--compress', '360p'
         ])
@@ -109,7 +109,7 @@ class TestFullDubbingWorkflow:
         
         result = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-video', 'output.mp4',
+            '--output-path', 'output',
             '--output-language', 'French',
             '--use-vertex-ai'
         ], env=env)
@@ -130,7 +130,7 @@ class TestFullDubbingWorkflow:
         
         result = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-video', 'output.mp4',
+            '--output-path', 'output',
             '--output-language', 'German',
             '--gemini-api-key', 'test-api-key',
             '--reuse', temp_working_dir
@@ -151,7 +151,7 @@ class TestFullDubbingWorkflow:
         
         result = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-video', 'output.mp4',
+            '--output-path', 'output',
             '--output-language', 'Japanese',
             '--gemini-api-key', 'test-api-key',
             '--llm-model', 'gemini-1.5-pro',
@@ -183,7 +183,7 @@ class TestFullDubbingWorkflow:
         
         result = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-video', 'output.mp4',
+            '--output-path', 'output',
             '--output-language', 'Spanish',
             '--gemini-api-key', 'test-api-key'
         ])
@@ -201,7 +201,7 @@ class TestFullDubbingWorkflow:
         
         result = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-video', 'output.mp4',
+            '--output-path', 'output',
             '--output-language', 'Spanish',
             '--gemini-api-key', 'test-api-key'
         ])
@@ -217,7 +217,7 @@ class TestFullDubbingWorkflow:
         for profile in ['360p', '720p', '1080p', '360P', '720P', '1080P']:  # Test case insensitivity
             result = runner.invoke(main, [
                 '--input-video', temp_video_file,
-                '--output-video', 'output.mp4',
+                '--output-path', 'output',
                 '--output-language', 'Spanish',
                 '--gemini-api-key', 'test-api-key',
                 '--compress', profile
@@ -241,7 +241,7 @@ class TestFullDubbingWorkflow:
         
         result = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-video', 'output.mp4',
+            '--output-path', 'output',
             '--input-language', input_lang,
             '--output-language', output_lang,
             '--gemini-api-key', 'test-api-key'

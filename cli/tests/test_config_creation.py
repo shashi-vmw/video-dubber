@@ -13,7 +13,7 @@ class TestConfigCreation:
         
         result = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-video', 'output.mp4',
+            '--output-path', 'output',
             '--output-language', 'Spanish',
             '--gemini-api-key', 'test-key'
         ])
@@ -42,7 +42,7 @@ class TestConfigCreation:
         
         result = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-video', 'output.mp4',
+            '--output-path', 'output',
             '--output-language', 'French',
             '--gemini-api-key', 'custom-api-key',
             '--project-id', 'custom-project',
@@ -80,7 +80,7 @@ class TestConfigCreation:
         
         result = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-video', 'output.mp4',
+            '--output-path', 'output',
             '--output-language', 'Japanese',
             '--use-vertex-ai',
             '--project-id', 'vertex-project',
@@ -103,7 +103,7 @@ class TestConfigCreation:
         
         result = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-video', 'output.mp4',
+            '--output-path', 'output',
             '--extraction-only',
             '--compress', '720p'
         ])
@@ -132,7 +132,7 @@ class TestConfigCreation:
         for model in custom_models:
             result = runner.invoke(main, [
                 '--input-video', temp_video_file,
-                '--output-video', 'output.mp4',
+                '--output-path', 'output',
                 '--output-language', 'Spanish',
                 '--gemini-api-key', 'test-key',
                 '--llm-model', model
@@ -159,7 +159,7 @@ class TestConfigCreation:
         for args, config_key, expected_value in test_cases:
             base_args = [
                 '--input-video', temp_video_file,
-                '--output-video', 'output.mp4'
+                '--output-path', 'output'
             ]
             if config_key != 'EXTRACTION_ONLY':
                 base_args.extend(['--output-language', 'Spanish'])
@@ -182,7 +182,7 @@ class TestConfigCreation:
         for profile in profiles:
             result = runner.invoke(main, [
                 '--input-video', temp_video_file,
-                '--output-video', 'output.mp4',
+                '--output-path', 'output',
                 '--output-language', 'Spanish',
                 '--gemini-api-key', 'test-key',
                 '--compress', profile
@@ -203,7 +203,7 @@ class TestConfigCreation:
         # First call with specific config
         result1 = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-video', 'output1.mp4',
+            '--output-path', 'output1.mp4',
             '--output-language', 'Spanish',
             '--gemini-api-key', 'key1',
             '--compress', '720p',
@@ -217,7 +217,7 @@ class TestConfigCreation:
         # Second call with different config
         result2 = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-video', 'output2.mp4',
+            '--output-path', 'output2.mp4',
             '--output-language', 'French',
             '--gemini-api-key', 'key2'
         ])
@@ -243,7 +243,7 @@ class TestConfigCreation:
         # Same parameters in different order
         args1 = [
             '--input-video', temp_video_file,
-            '--output-video', 'output.mp4',
+            '--output-path', 'output',
             '--output-language', 'Spanish',
             '--gemini-api-key', 'test-key',
             '--compress', '720p',
@@ -255,7 +255,7 @@ class TestConfigCreation:
             '--compress', '720p',
             '--gemini-api-key', 'test-key',
             '--output-language', 'Spanish',
-            '--output-video', 'output.mp4',
+            '--output-path', 'output',
             '--input-video', temp_video_file
         ]
         

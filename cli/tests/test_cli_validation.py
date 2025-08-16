@@ -13,7 +13,7 @@ class TestCLIValidation:
         runner = CliRunner()
         
         result = runner.invoke(main, [
-            '--output-video', 'output.mp4',
+            '--output-path', 'output',
             '--output-language', 'Spanish',
             '--gemini-api-key', 'test-key'
         ])
@@ -21,8 +21,8 @@ class TestCLIValidation:
         assert result.exit_code != 0
         assert "Missing option '--input-video'" in result.output
 
-    def test_missing_output_video_for_full_dubbing(self, temp_video_file, clean_env):
-        """Test that missing output video fails validation for full dubbing."""
+    def test_missing_output_path_for_full_dubbing(self, temp_video_file, clean_env):
+        """Test that missing output path fails validation for full dubbing."""
         runner = CliRunner()
         
         result = runner.invoke(main, [
@@ -32,7 +32,7 @@ class TestCLIValidation:
         ])
         
         assert result.exit_code != 0
-        assert "Missing option '--output-video'" in result.output
+        assert "Missing option '--output-path'" in result.output
 
     def test_missing_output_language_for_full_dubbing(self, mock_file_system, temp_video_file, clean_env):
         """Test that missing output language fails validation for full dubbing."""
@@ -40,7 +40,7 @@ class TestCLIValidation:
         
         result = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-video', 'output.mp4',
+            '--output-path', 'output',
             '--gemini-api-key', 'test-key'
         ])
         
@@ -53,7 +53,7 @@ class TestCLIValidation:
         
         result = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-video', 'output.mp4',
+            '--output-path', 'output',
             '--extraction-only'
         ])
         
@@ -65,7 +65,7 @@ class TestCLIValidation:
         
         result = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-video', 'output.mp4',
+            '--output-path', 'output',
             '--output-language', 'Spanish'
         ])
         
@@ -78,7 +78,7 @@ class TestCLIValidation:
         
         result = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-video', 'output.mp4',
+            '--output-path', 'output',
             '--output-language', 'Spanish',
             '--use-vertex-ai',
             '--location', 'us-central1'
@@ -93,7 +93,7 @@ class TestCLIValidation:
         
         result = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-video', 'output.mp4',
+            '--output-path', 'output',
             '--output-language', 'Spanish',
             '--use-vertex-ai',
             '--project-id', 'test-project'
@@ -108,7 +108,7 @@ class TestCLIValidation:
         
         result = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-video', 'output.mp4',
+            '--output-path', 'output',
             '--output-language', 'Spanish',
             '--gemini-api-key', 'test-key',
             '--reuse', temp_working_dir,
@@ -124,7 +124,7 @@ class TestCLIValidation:
         
         result = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-video', 'output.mp4',
+            '--output-path', 'output',
             '--reuse', temp_working_dir,
             '--extraction-only'
         ])
@@ -138,7 +138,7 @@ class TestCLIValidation:
         
         result = runner.invoke(main, [
             '--input-video', '/nonexistent/video.mp4',
-            '--output-video', 'output.mp4',
+            '--output-path', 'output',
             '--output-language', 'Spanish',
             '--gemini-api-key', 'test-key'
         ])
@@ -152,7 +152,7 @@ class TestCLIValidation:
         
         result = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-video', 'output.mp4',
+            '--output-path', 'output',
             '--output-language', 'Spanish',
             '--gemini-api-key', 'test-key',
             '--reuse', '/nonexistent/path'
@@ -167,7 +167,7 @@ class TestCLIValidation:
         
         result = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-video', 'output.mp4',
+            '--output-path', 'output',
             '--output-language', 'Spanish',
             '--gemini-api-key', 'test-key',
             '--compress', 'invalid-profile'
@@ -185,7 +185,7 @@ class TestCLIValidation:
         for profile in valid_profiles:
             result = runner.invoke(main, [
                 '--input-video', temp_video_file,
-                '--output-video', 'output.mp4',
+                '--output-path', 'output',
                 '--output-language', 'Spanish',
                 '--gemini-api-key', 'test-key',
                 '--compress', profile
@@ -201,7 +201,7 @@ class TestCLIValidation:
         
         result = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-video', 'output.mp4',
+            '--output-path', 'output',
             '--output-language', 'Spanish'
         ], env=env)
         
@@ -218,7 +218,7 @@ class TestCLIValidation:
         
         result = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-video', 'output.mp4',
+            '--output-path', 'output',
             '--output-language', 'Spanish',
             '--use-vertex-ai'
         ], env=env)
@@ -237,7 +237,7 @@ class TestCLIValidation:
         
         result = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-video', 'output.mp4',
+            '--output-path', 'output',
             '--output-language', 'Spanish',
             '--gemini-api-key', 'cli-api-key',
             '--project-id', 'cli-project',
@@ -259,7 +259,7 @@ class TestCLIValidation:
         
         result = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-video', 'output.mp4',
+            '--output-path', 'output',
             '--extraction-only'
         ])
         

@@ -34,6 +34,19 @@ class FileManager:
         
         return str(self.current_run_dir)
     
+    def setup_output_directory(self, output_path):
+        """Create output directory structure and return the absolute path."""
+        if os.path.isabs(output_path):
+            output_dir = Path(output_path)
+        else:
+            # For relative paths, create from current working directory
+            output_dir = Path.cwd() / output_path
+        
+        # Create the directory if it doesn't exist
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        return str(output_dir)
+    
     def get_segment_dir(self, segment_index, segment_name):
         """Get directory for processing a specific segment."""
         if not self.current_run_dir:
@@ -44,19 +57,23 @@ class FileManager:
         return str(segment_dir)
     
     def save_dubbing_script(self, video_path, dubbing_script, logger):
-        """Save the dubbing script to the working directory."""
+        """Save the dubbing script to the current run directory."""
         import json
         
         try:
+            if not self.current_run_dir:
+                raise ValueError("Working directory not set up. Call setup_working_directory first.")
+                
             base_name = Path(video_path).stem
             script_filename = f"{base_name}_dubbing_script.json"
-            script_path = self.base_working_dir / script_filename
+            script_path = self.current_run_dir / script_filename
             
             with open(script_path, 'w', encoding='utf-8') as f:
                 json.dump(dubbing_script, f, indent=2, ensure_ascii=False)
             
-            logger(f"💾 Dubbing script saved: {self.working_dir_name}/{script_filename}")
+            logger(f"💾 Dubbing script saved: {script_filename}")
             logger(f"   📊 Found {len(dubbing_script)} dialogue segments")
+            logger(f"   📁 Location: {script_path}")
             return str(script_path)
             
         except Exception as e:

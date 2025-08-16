@@ -32,6 +32,10 @@ class VideoProcessor:
             run_dir = self.file_manager.setup_working_directory(video_path, reuse_path=reuse_path)
             logger(f"📂 Working directory: {run_dir}")
             
+            # Create output directory
+            output_dir = self.file_manager.setup_output_directory(output_path)
+            logger(f"📁 Output directory: {output_dir}")
+            
             # Step 1: Handle video source (compression or reuse)
             if reuse_path:
                 processing_video = self._find_video_in_reuse_dir(run_dir, logger)
@@ -60,8 +64,8 @@ class VideoProcessor:
                 logger(f"📁 {run_dir}")
                 return run_dir
 
-            # Step 4: Combine segments if needed
-            final_output = self._handle_segment_combination(processed_segments, output_path, logger)
+            # Step 4: Combine segments if needed and place in output directory
+            final_output = self._handle_segment_combination(processed_segments, output_dir, video_path, logger)
             if not final_output:
                 return None
             
@@ -72,7 +76,7 @@ class VideoProcessor:
                 logger("\n🧹 Skipping cleanup in reuse mode.")
 
             # Final summary
-            self._log_pipeline_completion(overall_start_time, video_path, output_path, config, final_output, logger)
+            self._log_pipeline_completion(overall_start_time, video_path, output_dir, config, final_output, logger)
             
             return final_output
             
@@ -302,15 +306,19 @@ class VideoProcessor:
         self._log_segments_completion(segment_times, logger)
         return processed_segments
     
-    def _handle_segment_combination(self, dubbed_segments, output_path, logger):
+    def _handle_segment_combination(self, dubbed_segments, output_dir, video_path, logger):
         """Handle combining segments or finalizing single segment."""
+        # Create final output filename based on input video
+        base_name = os.path.splitext(os.path.basename(video_path))[0]
+        final_output_path = os.path.join(output_dir, f"{base_name}_dubbed.mp4")
+        
         if len(dubbed_segments) > 1:
             logger(f"\n{'='*60}")
             logger("🔗 STEP 4: COMBINING SEGMENTS")
             logger(f"{'='*60}")
             
             combination_start = time.time()
-            final_output = self.video_splitter.combine_dubbed_segments(dubbed_segments, output_path, logger)
+            final_output = self.video_splitter.combine_dubbed_segments(dubbed_segments, final_output_path, logger)
             combination_end = time.time()
             
             if final_output:
@@ -320,7 +328,7 @@ class VideoProcessor:
                 logger(f"❌ Failed to combine segments")
                 return None
         else:
-            return self._finalize_single_segment(dubbed_segments[0], output_path, logger)
+            return self._finalize_single_segment(dubbed_segments[0], final_output_path, logger)
     
     def _finalize_single_segment(self, dubbed_segment, output_path, logger):
         """Finalize processing for a single segment."""

@@ -33,13 +33,13 @@ pip install -r requirements-test.txt
 ### Basic Usage
 
 ```bash
-python cli.py --input-video input.mp4 --output-video output.mp4 --output-language Spanish --gemini-api-key YOUR_API_KEY
+python cli.py --input-video input.mp4 --output-path ../output-videos --output-language Spanish --gemini-api-key YOUR_API_KEY
 ```
 
 ### Using Vertex AI
 
 ```bash
-python cli.py --input-video input.mp4 --output-video output.mp4 --output-language Spanish --use-vertex-ai --project-id YOUR_PROJECT --location us-central1
+python cli.py --input-video input.mp4 --output-path ../output-videos --output-language Spanish --use-vertex-ai --project-id YOUR_PROJECT --location us-central1
 ```
 
 ### Extraction Only Mode
@@ -47,7 +47,7 @@ python cli.py --input-video input.mp4 --output-video output.mp4 --output-languag
 To extract audio, separate music, and generate script without dubbing:
 
 ```bash
-python cli.py --input-video input.mp4 --extraction-only
+python cli.py --input-video input.mp4 --output-path ../outputs --extraction-only
 ```
 
 ### Reusing Previous Work
@@ -55,7 +55,7 @@ python cli.py --input-video input.mp4 --extraction-only
 To continue from a previous run's working directory:
 
 ```bash
-python cli.py --input-video input.mp4 --output-video output.mp4 --output-language Spanish --reuse working-dir/previous-run
+python cli.py --input-video input.mp4 --output-path ../output-videos --output-language Spanish --reuse working-dir/previous-run
 ```
 
 ## Detailed Examples
@@ -66,14 +66,14 @@ python cli.py \
 --GEMINI_API_KEY YOUR_API_KEY_1 \
 --PROJECT_ID your-project-1 \
 --input-video ../source-videos/input-video.mov \
---output-video ../output-videos/output-video.mov \
+--output-path ../output-videos \
 --input-language Telugu \
 --output-language Hindi \
 --llm-model gemini-2.5-pro \
 --tts-model gemini-2.5-pro-preview-tts \
 --compress
 ```
-**Purpose**: Dubs a Telugu video to Hindi with automatic compression. Uses the latest Gemini 2.5 Pro models for both analysis and TTS. The `--compress` flag automatically selects an appropriate compression profile for faster processing.
+**Purpose**: Dubs a Telugu video to Hindi with automatic compression. Creates dubbed video as `../output-videos/input-video_dubbed.mp4`. Uses the latest Gemini 2.5 Pro models for both analysis and TTS. The `--compress` flag automatically selects an appropriate compression profile for faster processing.
 
 ### Example 2: Telugu to English Dubbing (No Compression)
 ```bash
@@ -81,13 +81,13 @@ python cli.py \
 --GEMINI_API_KEY YOUR_API_KEY_2 \
 --PROJECT_ID your-project-2 \
 --input-video ../source-videos/input-video.mov \
---output-video ../output-videos/output-video.mov \
+--output-path ../output-videos \
 --input-language Telugu \
 --output-language English \
 --llm-model gemini-2.5-pro \
 --tts-model gemini-2.5-pro-preview-tts
 ```
-**Purpose**: Performs high-quality Telugu to English dubbing without compression, maintaining original video quality. Uses different API credentials to distribute load across multiple projects and avoid TTS service limits.
+**Purpose**: Performs high-quality Telugu to English dubbing without compression, maintaining original video quality. Creates dubbed video as `../output-videos/input-video_dubbed.mp4`. Uses different API credentials to distribute load across multiple projects and avoid TTS service limits.
 
 ### Example 3: Reusing Previous Processing
 ```bash
@@ -95,7 +95,7 @@ python cli.py \
 --GEMINI_API_KEY YOUR_API_KEY_1 \
 --PROJECT_ID your-project-1 \
 --input-video ../source-videos/input-video.mov \
---output-video ../output-videos/output-video.mov \
+--output-path ../output-videos \
 --input-language Telugu \
 --output-language Hindi \
 --llm-model gemini-2.5-pro \
@@ -109,11 +109,11 @@ python cli.py \
 ```bash
 python cli.py \
 --input-video ../source-videos/input-video.mov \
---output-video ../output-videos/output-video.mov \
+--output-path ../output-videos \
 --compress \
 --extraction-only
 ```
-**Purpose**: Performs only the preparation steps - extracts audio, separates vocals from background music using Demucs, and generates the dubbing script. No API keys required. Useful for preprocessing before actual dubbing or for script review/editing.
+**Purpose**: Performs only the preparation steps - extracts audio, separates vocals from background music using Demucs, and generates the dubbing script. No API keys required. All artifacts (audio files, script) are saved in the working directory for later use. Useful for preprocessing before actual dubbing or for script review/editing.
 
 **Note**: Multiple API keys and project IDs are used across examples to distribute load and avoid hitting rate limits on the preview TTS service.
 
@@ -122,7 +122,7 @@ python cli.py \
 | Option | Description | Required |
 |--------|-------------|----------|
 | `--input-video` | Path to input video file | Yes |
-| `--output-video` | Path for output video file | Yes (except extraction-only) |
+| `--output-path` | Relative path to output directory | Yes (except extraction-only) |
 | `--output-language` | Target language for dubbing | Yes (except extraction-only) |
 | `--gemini-api-key` | Google API key (or set GEMINI_API_KEY env var) | Yes (unless using Vertex AI) |
 | `--use-vertex-ai` | Use Vertex AI authentication | No |
@@ -154,20 +154,34 @@ The CLI consists of several modules:
 - **dubbing_script_generator.py**: Generates detailed dubbing scripts using Gemini
 - **file_manager.py**: Manages working directories and file operations
 
-## Working Directory Structure
+## Directory Structure
 
+### Working Directory (Processing Artifacts)
 ```
 working-dir/
-├── run_YYYYMMDD_HHMMSS/
-│   ├── input_video.*
+├── video-name_20250816_132339/
+│   ├── video-name_compressed_720p.mp4
 │   ├── audio.wav
 │   ├── separated/
 │   │   ├── vocals.wav
 │   │   └── no_vocals.wav
-│   ├── script.json
-│   ├── dubbed_vocals/
-│   └── final_output.*
+│   ├── video-name_dubbing_script.json
+│   ├── segment_1_video-name/
+│   │   └── dubbed_vocals/
+│   └── ...
 ```
+
+### Output Directory (Final Results)
+```
+output-path/
+├── video-name_dubbed.mp4
+├── another-video_dubbed.mp4
+└── ...
+```
+
+Each dubbing run creates:
+- **Timestamped working directory**: Contains all processing artifacts, scripts, and intermediate files
+- **Output file**: Clean final dubbed video in the specified output directory
 
 ## Requirements
 

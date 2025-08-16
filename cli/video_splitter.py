@@ -49,9 +49,18 @@ class VideoSplitter:
             logger(f"   📁 Output: {os.path.basename(compressed_path)}")
             
             # Compression command with aspect ratio preservation and audio channel mapping
+            # Extract width and height from the scale filter for proper padding
+            if ':' in settings['vf']:
+                scale_parts = settings['vf'].replace('scale=', '').split(':')
+                target_width, target_height = scale_parts[0], scale_parts[1]
+                padding_filter = f"{settings['vf']}:force_original_aspect_ratio=decrease,pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2"
+            else:
+                # Fallback for unexpected scale format
+                padding_filter = settings['vf']
+            
             cmd = [
                 "ffmpeg", "-i", input_path,
-                "-vf", f"{settings['vf']}:force_original_aspect_ratio=decrease,pad={settings['vf'].replace(':',':(ow-iw)/2:(oh-ih)/2')}",
+                "-vf", padding_filter,
                 "-b:v", settings['vb'],
                 "-b:a", settings['ab'],
                 "-r", "24",
