@@ -45,6 +45,21 @@ class VideoProcessor:
             else:
                 processing_video = self._handle_compression(video_path, run_dir, config, logger)
             
+            # Check if in merge-segments mode
+            if config.get("MERGE_SEGMENTS"):
+                logger(f"\n{'='*50}")
+                logger("🔄 MERGE-SEGMENTS MODE: Re-creating final audio with all segments")
+                logger(f"{'='*50}")
+                
+                # Re-create the final audio track by reprocessing all segments
+                final_output = self._reprocess_final_audio(run_dir, output_dir, video_path, config, logger)
+                if not final_output:
+                    return None
+                
+                # Skip cleanup and log completion
+                self._log_pipeline_completion(overall_start_time, video_path, output_dir, config, final_output, logger)
+                return final_output
+            
             # Step 2: Check if video needs splitting
             video_segments = self._handle_video_splitting(processing_video, run_dir, logger)
             if not video_segments:
@@ -65,7 +80,7 @@ class VideoProcessor:
                 return run_dir
 
             # Step 4: Combine segments if needed and place in output directory
-            final_output = self._handle_segment_combination(processed_segments, output_dir, video_path, logger)
+            final_output = self._handle_segment_combination(processed_segments, output_dir, video_path, config, logger)
             if not final_output:
                 return None
             
@@ -169,7 +184,7 @@ class VideoProcessor:
         speaker_assignments = self.script_generator.assign_voices_to_speakers(dubbing_script)
         
         final_vocal_track = self.audio_processor.process_audio_segments(
-            dubbing_script, speaker_assignments, config, output_dir, background_music, logger
+            dubbing_script, speaker_assignments, config, output_dir, background_music, logger, self.file_manager
         )
         if final_vocal_track is None:
             return None
@@ -188,6 +203,162 @@ class VideoProcessor:
         logger(f"💾 Final audio saved: {os.path.basename(final_audio_path)}")
         
         return final_audio_path
+    
+    def _find_processed_segments(self, run_dir, logger):
+        """Find processed segment directories in reuse directory for merge-segments mode."""
+        logger("🔍 Looking for processed segments in reuse directory...")
+        
+        processed_segments = []
+        
+        # Look for segment directories (pattern: segment_X_videoname)
+        for item in os.listdir(run_dir):
+            item_path = os.path.join(run_dir, item)
+            if os.path.isdir(item_path) and item.startswith("segment_"):
+                # Check if this segment has a dubbed video file
+                for file in os.listdir(item_path):
+                    if file.endswith('.mp4') and 'dubbed' in file.lower():
+                        segment_video_path = os.path.join(item_path, file)
+                        processed_segments.append(segment_video_path)
+                        logger(f"   ✅ Found processed segment: {item}/{file}")
+                        break
+        
+        if processed_segments:
+            # Sort by segment number to ensure proper order
+            processed_segments.sort(key=lambda x: int(x.split('segment_')[1].split('_')[0]))
+            logger(f"📊 Found {len(processed_segments)} processed segments")
+        else:
+            logger("❌ No processed segments found - looking for alternative patterns...")
+            # Alternative: look for any dubbed video files in subdirectories
+            for item in os.listdir(run_dir):
+                item_path = os.path.join(run_dir, item)
+                if os.path.isdir(item_path):
+                    for file in os.listdir(item_path):
+                        if file.endswith('.mp4'):
+                            segment_video_path = os.path.join(item_path, file)
+                            processed_segments.append(segment_video_path)
+                            logger(f"   ✅ Found video segment: {item}/{file}")
+            
+            if processed_segments:
+                processed_segments.sort()
+                logger(f"📊 Found {len(processed_segments)} video segments (alternative pattern)")
+        
+        return processed_segments if processed_segments else None
+    
+    def _reprocess_final_audio(self, run_dir, output_dir, video_path, config, logger):
+        """Reprocess final audio by combining all existing segment audio files with background music."""
+        logger("🎵 Reprocessing final audio track from existing segments...")
+        
+        # Load dubbing script
+        base_name = os.path.splitext(os.path.basename(video_path))[0]
+        script_filename = f"{base_name}_dubbing_script.json"
+        script_path = os.path.join(run_dir, script_filename)
+        if not os.path.exists(script_path):
+            logger(f"❌ Dubbing script not found: {script_path}")
+            return None
+            
+        import json
+        with open(script_path, 'r') as f:
+            dubbing_script = json.load(f)
+        logger(f"✅ Loaded dubbing script with {len(dubbing_script)} segments")
+        
+        # Load background music
+        base_name = os.path.splitext(os.path.basename(video_path))[0]
+        separated_dir = os.path.join(run_dir, "separated", "htdemucs", base_name)
+        background_path = os.path.join(separated_dir, "no_vocals.wav")
+        
+        if not os.path.exists(background_path):
+            logger(f"❌ Background music not found: {background_path}")
+            return None
+            
+        from pydub import AudioSegment
+        background_music = AudioSegment.from_wav(background_path)
+        logger(f"✅ Loaded background music ({len(background_music)/1000:.1f}s)")
+        
+        # Create silent track of same duration
+        final_vocal_track = AudioSegment.silent(duration=len(background_music))
+        output_lang_key = f"{config['OUTPUT_LANGUAGE']}_translation"
+        successful_overlays = 0
+        
+        logger("🔄 Processing individual segment audio files...")
+        
+        # Process each segment
+        for i, segment in enumerate(dubbing_script):
+            start_time_ms = int(segment["start_time"] * 1000)
+            end_time_ms = int(segment["end_time"] * 1000)
+            
+            # Look for segment audio file
+            segment_audio_path = os.path.join(run_dir, f"segment_{i}.wav")
+            if os.path.exists(segment_audio_path):
+                try:
+                    dub_segment = AudioSegment.from_wav(segment_audio_path)
+                    
+                    # Check if segment timing is within background music duration
+                    bg_duration_ms = len(background_music)
+                    if start_time_ms >= bg_duration_ms:
+                        logger(f"   ⚠️ Segment {i} start time ({start_time_ms/1000:.1f}s) beyond background duration ({bg_duration_ms/1000:.1f}s)")
+                        logger(f"   🔧 Extending final track to accommodate segment")
+                        # Extend final track with silence if needed
+                        extension_needed = start_time_ms + len(dub_segment) - len(final_vocal_track)
+                        if extension_needed > 0:
+                            final_vocal_track = final_vocal_track + AudioSegment.silent(duration=extension_needed)
+                    
+                    final_vocal_track = final_vocal_track.overlay(dub_segment, position=start_time_ms)
+                    successful_overlays += 1
+                    logger(f"   ✅ Segment {i+1}/{len(dubbing_script)} overlaid at {start_time_ms/1000:.1f}s")
+                except Exception as e:
+                    logger(f"   ❌ Failed to process segment {i}: {e}")
+            else:
+                logger(f"   ⚠️ Segment audio file not found: {segment_audio_path}")
+        
+        if successful_overlays == 0:
+            logger("❌ No segment audio files could be processed")
+            return None
+            
+        logger(f"✅ Successfully processed {successful_overlays}/{len(dubbing_script)} segments")
+        
+        # Combine with background music
+        logger("🎵 Combining background music with dubbed vocals...")
+        if final_vocal_track.max > 0:
+            # Extend background music if vocal track is longer
+            if len(final_vocal_track) > len(background_music):
+                logger(f"   🔧 Extending background music from {len(background_music)/1000:.1f}s to {len(final_vocal_track)/1000:.1f}s")
+                extension_needed = len(final_vocal_track) - len(background_music)
+                background_music = background_music + AudioSegment.silent(duration=extension_needed)
+            
+            final_audio_track = background_music.overlay(final_vocal_track)
+            logger("✅ Audio tracks combined successfully.")
+        else:
+            logger("⚠️ No vocal content found, using background music only.")
+            final_audio_track = background_music
+        
+        # Export final audio
+        final_audio_path = os.path.join(run_dir, f"{base_name}_dubbed_audio_reprocessed.wav")
+        final_audio_track.export(final_audio_path, format="wav")
+        logger(f"💾 Final reprocessed audio saved: {os.path.basename(final_audio_path)}")
+        
+        # Find the original video file in run_dir
+        processing_video = self._find_video_in_reuse_dir(run_dir, logger)
+        if not processing_video:
+            logger("❌ Could not find original video file in reuse directory")
+            return None
+        
+        # Create final output path
+        base_name = os.path.splitext(os.path.basename(video_path))[0]
+        output_language = config.get('OUTPUT_LANGUAGE', 'unknown')
+        safe_language = ''.join(c for c in output_language if c.isalnum() or c in '-_').lower()
+        final_output_path = os.path.join(output_dir, f"{base_name}_dubbed_{safe_language}.mp4")
+        
+        # Merge final audio with video
+        final_output = self.audio_processor.merge_audio_with_video(
+            processing_video, final_audio_path, final_output_path, logger
+        )
+        
+        if final_output:
+            logger(f"🎉 Final reprocessed video created: {os.path.basename(final_output)}")
+            return final_output
+        else:
+            logger("❌ Failed to merge reprocessed audio with video")
+            return None
     
     def _find_video_in_reuse_dir(self, run_dir, logger):
         """Find the video file in a reuse directory."""
@@ -306,11 +477,15 @@ class VideoProcessor:
         self._log_segments_completion(segment_times, logger)
         return processed_segments
     
-    def _handle_segment_combination(self, dubbed_segments, output_dir, video_path, logger):
+    def _handle_segment_combination(self, dubbed_segments, output_dir, video_path, config, logger):
         """Handle combining segments or finalizing single segment."""
-        # Create final output filename based on input video
+        # Create final output filename based on input video and output language
         base_name = os.path.splitext(os.path.basename(video_path))[0]
-        final_output_path = os.path.join(output_dir, f"{base_name}_dubbed.mp4")
+        output_language = config.get('OUTPUT_LANGUAGE', 'unknown')
+        
+        # Sanitize language name for filename (remove spaces, special chars)
+        safe_language = ''.join(c for c in output_language if c.isalnum() or c in '-_').lower()
+        final_output_path = os.path.join(output_dir, f"{base_name}_dubbed_{safe_language}.mp4")
         
         if len(dubbed_segments) > 1:
             logger(f"\n{'='*60}")

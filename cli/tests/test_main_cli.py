@@ -244,7 +244,7 @@ class TestMainCLIFunction:
         # First call
         result1 = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-path', 'output1.mp4',
+            '--output-path', 'output1',
             '--output-language', 'Spanish',
             '--gemini-api-key', 'test-key1'
         ])
@@ -255,7 +255,7 @@ class TestMainCLIFunction:
         # Second call
         result2 = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-path', 'output2.mp4',
+            '--output-path', 'output2',
             '--output-language', 'French',
             '--gemini-api-key', 'test-key2'
         ])

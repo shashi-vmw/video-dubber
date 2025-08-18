@@ -22,7 +22,12 @@ def logger(message):
 @click.option("--reuse", "reuse_path", type=click.Path(exists=True, file_okay=False, dir_okay=True), help="Path to a previous run's working directory to reuse its artifacts.")
 @click.option("--strict", is_flag=True, help="Fail immediately if any AI generation step (TTS, translation) fails.")
 @click.option("--extraction-only", is_flag=True, help="Run only the extraction steps (audio, music separation, script) and then stop.")
-def main(input_video, output_path, output_language, gemini_api_key, use_vertex_ai, project_id, location, input_language, llm_model, tts_model, compression_profile, working_dir, reuse_path, strict, extraction_only):
+@click.option("--merge-segments", is_flag=True, help="Re-run only the segment merging step (must be used with --reuse).")
+@click.option("--simplified-prompt", is_flag=True, help="Use simplified prompt for better completeness on long videos (may reduce natural speech quality).")
+@click.option("--adjust-verbosity", is_flag=True, help="Adjust verbosity between languages for intent-based translation (e.g., condense verbose languages, expand terse ones).")
+@click.option("--tts-max-retries", default=3, show_default=True, type=int, help="Maximum number of retries for TTS synthesis failures.")
+@click.option("--tts-retry-delay", default=2, show_default=True, type=float, help="Base delay in seconds between TTS retry attempts (uses exponential backoff).")
+def main(input_video, output_path, output_language, gemini_api_key, use_vertex_ai, project_id, location, input_language, llm_model, tts_model, compression_profile, working_dir, reuse_path, strict, extraction_only, merge_segments, simplified_prompt, adjust_verbosity, tts_max_retries, tts_retry_delay):
     """
     A command-line tool to dub videos using the Gemini AI API.
     """
@@ -33,6 +38,10 @@ def main(input_video, output_path, output_language, gemini_api_key, use_vertex_a
         raise click.UsageError("--reuse and --strict flags cannot be used together.")
     if reuse_path and extraction_only:
         raise click.UsageError("--reuse and --extraction-only flags cannot be used together.")
+    if merge_segments and not reuse_path:
+        raise click.UsageError("--merge-segments can only be used with --reuse flag.")
+    if merge_segments and extraction_only:
+        raise click.UsageError("--merge-segments and --extraction-only flags cannot be used together.")
 
     # API key is not needed for extraction-only mode
     if not extraction_only:
@@ -56,6 +65,11 @@ def main(input_video, output_path, output_language, gemini_api_key, use_vertex_a
         "REUSE_PATH": reuse_path,
         "STRICT": strict,
         "EXTRACTION_ONLY": extraction_only,
+        "MERGE_SEGMENTS": merge_segments,
+        "SIMPLIFIED_PROMPT": simplified_prompt,
+        "ADJUST_VERBOSITY": adjust_verbosity,
+        "TTS_MAX_RETRIES": tts_max_retries,
+        "TTS_RETRY_DELAY": tts_retry_delay,
     }
 
     # Initialize the video processor

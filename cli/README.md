@@ -73,7 +73,7 @@ python cli.py \
 --tts-model gemini-2.5-pro-preview-tts \
 --compress
 ```
-**Purpose**: Dubs a Telugu video to Hindi with automatic compression. Creates dubbed video as `../output-videos/input-video_dubbed.mp4`. Uses the latest Gemini 2.5 Pro models for both analysis and TTS. The `--compress` flag automatically selects an appropriate compression profile for faster processing.
+**Purpose**: Dubs a Telugu video to Hindi with automatic compression. Creates dubbed video as `../output-videos/input-video_dubbed_hindi.mp4`. Uses the latest Gemini 2.5 Pro models for both analysis and TTS. The `--compress` flag automatically selects an appropriate compression profile for faster processing.
 
 ### Example 2: Telugu to English Dubbing (No Compression)
 ```bash
@@ -87,7 +87,7 @@ python cli.py \
 --llm-model gemini-2.5-pro \
 --tts-model gemini-2.5-pro-preview-tts
 ```
-**Purpose**: Performs high-quality Telugu to English dubbing without compression, maintaining original video quality. Creates dubbed video as `../output-videos/input-video_dubbed.mp4`. Uses different API credentials to distribute load across multiple projects and avoid TTS service limits.
+**Purpose**: Performs high-quality Telugu to English dubbing without compression, maintaining original video quality. Creates dubbed video as `../output-videos/input-video_dubbed_english.mp4`. Uses different API credentials to distribute load across multiple projects and avoid TTS service limits.
 
 ### Example 3: Reusing Previous Processing
 ```bash
@@ -174,14 +174,15 @@ working-dir/
 ### Output Directory (Final Results)
 ```
 output-path/
-├── video-name_dubbed.mp4
-├── another-video_dubbed.mp4
+├── video-name_dubbed_spanish.mp4
+├── video-name_dubbed_hindi.mp4
+├── another-video_dubbed_english.mp4
 └── ...
 ```
 
 Each dubbing run creates:
 - **Timestamped working directory**: Contains all processing artifacts, scripts, and intermediate files
-- **Output file**: Clean final dubbed video in the specified output directory
+- **Output file**: Clean final dubbed video with language suffix in the specified output directory
 
 ## Requirements
 

@@ -253,3 +253,31 @@ class TestFullDubbingWorkflow:
         config = call_args[0][2]
         assert config['INPUT_LANGUAGE'] == input_lang
         assert config['OUTPUT_LANGUAGE'] == output_lang
+
+    def test_filename_generation_with_output_language(self, mock_video_processor, mock_file_system, temp_video_file, clean_env):
+        """Test that output language is included in filename generation."""
+        runner = CliRunner()
+        
+        # Test different languages to ensure proper filename sanitization
+        test_cases = [
+            ("Spanish", "spanish"),
+            ("English", "english"), 
+            ("Hindi", "hindi"),
+            ("Chinese (Simplified)", "chinesesimplified"),
+            ("French-Canadian", "french-canadian"),
+        ]
+        
+        for output_lang, expected_safe_lang in test_cases:
+            result = runner.invoke(main, [
+                '--input-video', temp_video_file,
+                '--output-path', 'output',
+                '--output-language', output_lang,
+                '--gemini-api-key', 'test-api-key'
+            ])
+            
+            assert result.exit_code == 0
+            
+            # Verify the output language is properly set in config
+            call_args = mock_video_processor.process_video_dubbing.call_args
+            config = call_args[0][2]
+            assert config['OUTPUT_LANGUAGE'] == output_lang

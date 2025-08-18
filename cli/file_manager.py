@@ -80,6 +80,54 @@ class FileManager:
             logger(f"⚠️ Could not save dubbing script: {e}")
             return None
     
+    def save_prompt(self, prompt_content, prompt_type, video_path=None, segment_info=None, logger=None):
+        """Save prompt content to the working directory for reference."""
+        try:
+            if not self.current_run_dir:
+                raise ValueError("Working directory not set up. Call setup_working_directory first.")
+            
+            # Create prompts subdirectory
+            prompts_dir = self.current_run_dir / "prompts"
+            prompts_dir.mkdir(exist_ok=True)
+            
+            # Generate filename based on prompt type
+            if prompt_type == "dubbing_script":
+                base_name = Path(video_path).stem if video_path else "video"
+                filename = f"{base_name}_dubbing_script_prompt.txt"
+            elif prompt_type == "tts":
+                if segment_info:
+                    speaker = segment_info.get('speaker_label', 'unknown')
+                    segment_num = segment_info.get('segment_number', 'unknown')
+                    filename = f"tts_prompt_segment_{segment_num}_{speaker}.txt"
+                else:
+                    filename = "tts_prompt_sample.txt"
+            else:
+                filename = f"{prompt_type}_prompt.txt"
+            
+            prompt_path = prompts_dir / filename
+            
+            # Write prompt with metadata header
+            with open(prompt_path, 'w', encoding='utf-8') as f:
+                f.write("# PROMPT CONTENT\n")
+                f.write(f"# Type: {prompt_type}\n")
+                f.write(f"# Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                if video_path:
+                    f.write(f"# Video: {Path(video_path).name}\n")
+                if segment_info:
+                    f.write(f"# Segment: {segment_info}\n")
+                f.write("# " + "="*60 + "\n\n")
+                f.write(prompt_content)
+            
+            if logger:
+                logger(f"💾 Prompt saved: prompts/{filename}")
+            
+            return str(prompt_path)
+            
+        except Exception as e:
+            if logger:
+                logger(f"❌ Error saving prompt: {e}")
+            return None
+    
     def get_file_size_gb(self, file_path):
         """Get file size in GB."""
         if not os.path.exists(file_path):

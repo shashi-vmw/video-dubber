@@ -203,7 +203,7 @@ class TestConfigCreation:
         # First call with specific config
         result1 = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-path', 'output1.mp4',
+            '--output-path', 'output1',
             '--output-language', 'Spanish',
             '--gemini-api-key', 'key1',
             '--compress', '720p',
@@ -217,7 +217,7 @@ class TestConfigCreation:
         # Second call with different config
         result2 = runner.invoke(main, [
             '--input-video', temp_video_file,
-            '--output-path', 'output2.mp4',
+            '--output-path', 'output2',
             '--output-language', 'French',
             '--gemini-api-key', 'key2'
         ])
