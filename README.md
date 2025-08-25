@@ -32,7 +32,7 @@ For pre-sales discussions, these are the key points to articulate the solution's
 Unmatched Quality and Authenticity: This solution goes far beyond simple translation. By analyzing and replicating emotion, delivery style, and pacing, it produces a dub that feels natural and authentic. Preserving the original background music maintains the film's intended atmosphere and production value.
 Massive Scalability and Speed: The automated workflow drastically reduces the time and cost associated with traditional dubbing, which involves manual transcription, translation, hiring voice actors, and studio mixing. This allows content creators to reach global audiences in a fraction of the time.
 The Power of a Single Multimodal Model: This solution showcases the efficiency of Gemini 2.5 Pro. A single API call to a single model provides transcription, translation, speaker identification, and nuanced performance analysis. This simplifies the architecture and reduces reliance on a complex chain of specialized AI services.
-End-to-End Google Cloud Solution: By leveraging GCS for storage and Vertex AI for model serving, the solution is secure, scalable, and fully integrated within the Google Cloud ecosystem, making it a robust offering for enterprise clients.Github Repo: https://github.com/shashi-vmw/video-dubber (Request for access: Shashi Ranjan)
+End-to-End Google Cloud Solution: By leveraging GCS for storage and Vertex AI for model serving, the solution is secure, scalable, and fully integrated within the Google Cloud ecosystem, making it a robust offering for enterprise clients.Github Repo: https://github.com/shashi-vmw/video-dubber
 Sample Input (Chinese Video): Link
 Chinese to English: Link
 Chinese to Hindi: Link
