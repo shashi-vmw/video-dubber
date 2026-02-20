@@ -1,0 +1,8 @@
+Flask
+google-genai
+google-cloud-storage
+moviepy>=2.0.0.dev2
+pydub
+demucs
+numpy
+gunicorn

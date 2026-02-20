@@ -1,0 +1,23 @@
+# Media & Large Files
+*.mp4
+*.wav
+*.mp3
+*.log
+
+# GCP Keys
+*.json
+
+# Python
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store
+
+# Outputs & Workspace
+output_*/
+session_workspace/
+separated/
+
+# Local tests
+check_moviepy.py
