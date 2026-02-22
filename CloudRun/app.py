@@ -23,7 +23,7 @@ BUCKET_NAME = os.environ.get("BUCKET_NAME")
 TTS_MODEL = os.environ.get("TTS_MODEL", "gemini-2.5-pro-tts")
 LLM_MODEL = os.environ.get("LLM_MODEL", "gemini-3-pro-preview")
 
-# --- UI HELPER DATA (Same as app_local.py for consistency) ---
+# --- UI HELPER DATA ---
 MALE_VOICE_LIST = [
     'Achird', 'Algenib', 'Algieba', 'Alnilam', 'Charon', 'Enceladus',
     'Fenrir', 'Iapetus', 'Orus', 'Puck', 'Rasalgethi', 'Sadachbia',
@@ -42,7 +42,6 @@ def get_gcs_client():
     return storage.Client()
 
 def download_blob(client, bucket_name, source_blob_name, destination_file_name):
-    """Downloads a blob from the bucket."""
     try:
         bucket = client.bucket(bucket_name)
         blob = bucket.blob(source_blob_name)
@@ -53,7 +52,6 @@ def download_blob(client, bucket_name, source_blob_name, destination_file_name):
         return False
 
 def upload_blob(client, bucket_name, source_file_name, destination_blob_name):
-    """Uploads a file to the bucket."""
     try:
         bucket = client.bucket(bucket_name)
         blob = bucket.blob(destination_blob_name)
@@ -63,23 +61,17 @@ def upload_blob(client, bucket_name, source_file_name, destination_blob_name):
         print(f"Failed to upload file: {e}")
         return None
 
-# --- CORE LOGIC (Copied from app_local.py) ---
+# --- CORE LOGIC ---
 def validate_and_fix_script(script, video_duration):
-    """
-    Validates and corrects the dubbing script.
-    Checks for chronology, overlaps, small gaps, and huge missing chunks.
-    """
     if not script:
         return []
 
-    # 1. Convert timestamps to float and Sort
     valid_script = []
     for seg in script:
         try:
             seg['start_time'] = float(seg['start_time'])
             seg['end_time'] = float(seg['end_time'])
             
-            # Enforce minimum duration of 300ms
             if seg['end_time'] - seg['start_time'] < 0.3:
                  seg['end_time'] = seg['start_time'] + 0.3
 
@@ -91,7 +83,6 @@ def validate_and_fix_script(script, video_duration):
             
     valid_script.sort(key=lambda x: x['start_time'])
 
-    # 2. Fix Overlaps and Gaps
     fixed_script = []
     for i, current_seg in enumerate(valid_script):
         if i == 0:
@@ -100,7 +91,6 @@ def validate_and_fix_script(script, video_duration):
         
         prev_seg = fixed_script[-1]
         
-        # Check for overlap
         if current_seg['start_time'] < prev_seg['end_time']:
             overlap = prev_seg['end_time'] - current_seg['start_time']
             print(f"⚠️ Overlap detected between segments ({overlap:.3f}s). Adjusting prev end time.")
@@ -109,7 +99,6 @@ def validate_and_fix_script(script, video_duration):
             if prev_seg['end_time'] <= prev_seg['start_time']:
                  fixed_script.pop()
         
-        # Check for tiny gaps (< 100ms) - Merge
         elif 0 < (current_seg['start_time'] - prev_seg['end_time']) < 0.1:
              prev_seg['end_time'] = current_seg['start_time']
         
@@ -118,13 +107,8 @@ def validate_and_fix_script(script, video_duration):
     return fixed_script
 
 def validate_and_refine_script(script, config):
-    """
-    Invokes Gemini again to validate the generated dubbing script for accuracy and timing.
-    """
     print("🕵️ Validating and refining script with Gemini...")
-    
     try:
-        # Use Vertex AI for Cloud Run
         client = genai.Client(vertexai=True, project=config["PROJECT_ID"], location=config["LOCATION"])
             
         prompt = f"""
@@ -163,9 +147,6 @@ def validate_and_refine_script(script, config):
         return script
 
 def get_dubbing_script_from_video(video_uri, config, video_duration):
-    """
-    Analyzes a video from GCS URI to produce a dubbing script.
-    """
     try:
         print(f"Authenticating with Vertex AI (Project: {config['PROJECT_ID']}, Location: {config['LOCATION']})")
         client = genai.Client(vertexai=True, project=config["PROJECT_ID"], location=config["LOCATION"])
@@ -245,7 +226,6 @@ def get_dubbing_script_from_video(video_uri, config, video_duration):
             json_text = response.text.strip().lstrip("```json").rstrip("```")
             raw_script = json.loads(json_text)
             
-            # --- Duration Validation Loop ---
             if not raw_script:
                 raise ValueError("Empty script returned.")
                 
@@ -301,7 +281,7 @@ def separate_background_music(audio_path, output_dir):
             sys.executable, "-m", "demucs.separate", "-n", "htdemucs",
             "-o", str(output_dir), "--two-stems", "vocals", str(audio_path)
         ]
-        result = subprocess.run(command, check=True, capture_output=True, text=True)
+        subprocess.run(command, check=True, capture_output=True, text=True)
         
         audio_filename = os.path.splitext(os.path.basename(audio_path))[0]
         model_name = "htdemucs"
@@ -333,7 +313,7 @@ def synthesize_speech_with_gemini(text, segment_details, config):
         return None
 
     audio_profile = f"Speaker: {segment_details['speaker_label']}, Gender: {segment_details['character_type']}, Language: {config['OUTPUT_LANGUAGE']}."
-    scene_description = f"Movie dubbing session. The character is experiencing {segment_details['emotion']}. "
+    scene_description = f"Movie dubbing session. The character is experiencing {segment_details['emotion']}."
     style_instruction = f"Emotion: {segment_details['emotion']}."
     if segment_details['delivery_style'] != "NORMAL":
         style_instruction += f" Delivery: {segment_details['delivery_style']} (act this out)."
@@ -454,8 +434,6 @@ dubbing_script = get_dubbing_script_from_video(gcs_uri, config, video_duration)
             return jsonify({"error": "Failed to generate dubbing script"}), 500
 
         # 4. Assign Voices (Auto-assign for Cloud Run version)
-        # In a real API, you might return the script here and ask for assignments in a second call.
-        # For now, we auto-assign using the logic.
         speaker_assignments = []
         speaker_info = {}
         for item in dubbing_script:
@@ -488,9 +466,6 @@ dubbing_script = get_dubbing_script_from_video(gcs_uri, config, video_duration)
             })
             
         # 5. Synthesize (Step 2)
-        # ... (Synthesis logic similar to app_local.py but adapted for linear execution)
-        # For brevity, I will implement the core synthesis loop here directly
-        
         final_video_clips = []
         final_audio_segments = []
         original_video = VideoFileClip(local_video_path)
