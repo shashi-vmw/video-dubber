@@ -2,9 +2,9 @@
 FROM python:3.11-slim
 
 # Install system dependencies (ffmpeg is crucial)
-RUN apt-get update && apt-get install -y \
-    ffmpeg \
-    libsndfile1 \
+RUN apt-get update && apt-get install -y 
+    ffmpeg 
+    libsndfile1 
     && rm -rf /var/lib/apt/lists/*
 
 # Set the working directory to /app
@@ -23,4 +23,4 @@ ENV IMAGEIO_FFMPEG_EXE=/usr/bin/ffmpeg
 ENV PORT=8080
 
 # Run streamlit
-CMD streamlit run app.py --server.port=${PORT} --server.address=0.0.0.0
+CMD streamlit run app_local.py --server.port=${PORT} --server.address=0.0.0.0

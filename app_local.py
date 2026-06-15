@@ -572,7 +572,7 @@ def step1_generate_script(local_video_path, gcs_video_uri, config, logger):
     base_name = os.path.splitext(os.path.basename(local_video_path))[0]
     
     # We use a persistent output directory in session state or fixed path
-    output_dir = os.path.join("/Users/shashirr/Shashi/scvideos", f"output_{base_name}")
+    output_dir = os.path.join(".", f"output_{base_name}")
     os.makedirs(output_dir, exist_ok=True)
     
     # 1. Extract Audio from Local File
@@ -884,8 +884,8 @@ def main():
             with col2:
                 output_lang = st.selectbox("Output Language", options=LANGUAGES, index=LANGUAGES.index("Hindi"))
 
-            llm_model_name = st.selectbox("LLM Model Name", options=["gemini-3-pro-preview", "gemini-3-flash-preview"], index=0)
-            tts_model_name = st.selectbox("TTS Model Name (Vertex AI)", options=["gemini-2.5-pro-tts", "gemini-2.5-flash-tts"], index=0)
+            llm_model_name = st.selectbox("LLM Model Name", options=["gemini-3.5-flash", "gemini-3-flash-preview"], index=0)
+            tts_model_name = st.selectbox("TTS Model Name (Vertex AI)", options=["gemini-3.1-flash-tts-preview","gemini-2.5-pro-tts", "gemini-2.5-flash-tts"], index=0)
             
             # Action Buttons in Form
             analyze_clicked = st.form_submit_button("1. Analyze Video & Generate Script")
@@ -909,7 +909,7 @@ def main():
             
             # We need to save the file to a permanent location for this session
             # to avoid TempDirectory cleanup issues between clicks.
-            session_work_dir = os.path.join("/Users/shashirr/Shashi/scvideos", "session_workspace")
+            session_work_dir = os.path.join(".", "session_workspace")
             os.makedirs(session_work_dir, exist_ok=True)
             
             local_processing_path = None

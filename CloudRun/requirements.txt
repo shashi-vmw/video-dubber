@@ -6,3 +6,4 @@ pydub
 demucs
 numpy
 gunicorn
+streamlit
