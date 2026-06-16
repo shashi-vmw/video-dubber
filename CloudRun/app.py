@@ -391,13 +391,31 @@ def extract_audio(video_path, audio_path, logger):
 
 def separate_background_music(audio_path, output_dir, logger):
     logger.log("🎶 Separating background music with Demucs... (This might take a while)")
+    
+    # Check GPU availability
+    device = "cpu"
+    try:
+        import torch
+        if torch.cuda.is_available():
+            # Try to perform a simple CUDA operation to verify CUDA is actually working
+            # (sometimes is_available() is True but CUDA initialization fails)
+            torch.zeros(1).cuda()
+            device = "cuda"
+            logger.log("🚀 CUDA GPU is available and verified. Using GPU for audio separation.")
+        else:
+            logger.log("ℹ️ CUDA GPU is not available. Using CPU for audio separation.")
+    except Exception as gpu_err:
+        logger.log(f"⚠️ GPU check failed or CUDA initialization error: {gpu_err}. Falling back to CPU.")
+        device = "cpu"
+
     try:
         command = [
             sys.executable, "-m", "demucs.separate", "-n", "htdemucs",
+            "-d", device,
             "-o", str(output_dir), "--two-stems", "vocals", str(audio_path)
         ]
         # Use st.spinner for long-running processes
-        with st.spinner('Demucs is separating audio tracks... Please wait.'):
+        with st.spinner(f'Demucs is separating audio tracks using {device.upper()}... Please wait.'):
             result = subprocess.run(command, check=True, capture_output=True, text=True)
         
         audio_filename = os.path.splitext(os.path.basename(audio_path))[0]
@@ -412,6 +430,44 @@ def separate_background_music(audio_path, output_dir, logger):
             if result.stderr:
                 logger.log(f"Demucs Error: {result.stderr}")
             return None
+            
+    except subprocess.CalledProcessError as e:
+        logger.log(f"❌ Demucs process failed with exit code {e.returncode} using {device.upper()}")
+        if e.stderr:
+            logger.log(f"❌ Demucs stderr: {e.stderr}")
+        if e.stdout:
+            logger.log(f"❌ Demucs stdout: {e.stdout}")
+            
+        # Fallback to CPU if we tried to run on GPU and failed
+        if device == "cuda":
+            logger.log("🔄 Retrying audio separation on CPU fallback...")
+            try:
+                command_cpu = [
+                    sys.executable, "-m", "demucs.separate", "-n", "htdemucs",
+                    "-d", "cpu",
+                    "-o", str(output_dir), "--two-stems", "vocals", str(audio_path)
+                ]
+                with st.spinner('Demucs is separating audio tracks using CPU fallback... Please wait.'):
+                    result_cpu = subprocess.run(command_cpu, check=True, capture_output=True, text=True)
+                
+                if os.path.exists(background_path):
+                    logger.log("✅ Background music separated successfully on CPU fallback.")
+                    return background_path
+                else:
+                    logger.log("❌ CPU fallback did not produce the background music file.")
+                    if result_cpu.stderr:
+                        logger.log(f"Demucs CPU Fallback Error: {result_cpu.stderr}")
+                    return None
+            except subprocess.CalledProcessError as fallback_err:
+                logger.log(f"❌ CPU Fallback failed: {fallback_err}")
+                if fallback_err.stderr:
+                    logger.log(f"❌ CPU Fallback stderr: {fallback_err.stderr}")
+                return None
+            except Exception as fallback_ex:
+                logger.log(f"❌ Error during CPU fallback separation: {fallback_ex}")
+                return None
+        return None
+        
     except Exception as e:
         logger.log(f"❌ An error occurred during audio separation: {e}")
         return None

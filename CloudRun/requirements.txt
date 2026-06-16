@@ -7,3 +7,5 @@ demucs
 numpy
 gunicorn
 streamlit
+soundfile
+torchcodec
